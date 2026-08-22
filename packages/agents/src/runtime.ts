@@ -13,6 +13,8 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Budget } from "./budget.js";
 import type { Effort, ModelClient } from "./client.js";
 import { investigationTools, runTool, type ToolContext } from "./tools.js";
+import { TraceRecorder, type AgentTrace } from "./trace.js";
+import { costCents } from "./client.js";
 
 export interface AgentRunOptions<T> {
   readonly agentId: string;
@@ -29,6 +31,9 @@ export interface AgentRunOptions<T> {
   /** Rejects a malformed submission so the model can correct it in-loop. */
   readonly validate: (input: unknown) => { ok: true; value: T } | { ok: false; error: string };
   readonly log?: (message: string) => void;
+  /** Phase this agent belongs to, recorded on the trace. */
+  readonly phase?: string;
+  readonly promptVersion?: string;
 }
 
 export interface AgentRunResult<T> {
@@ -39,17 +44,23 @@ export interface AgentRunResult<T> {
   readonly outputTokens: number;
   readonly turns: number;
   readonly toolCalls: number;
+  /** Everything the agent did to reach this, for the console and the audit. */
+  readonly trace: AgentTrace;
 }
 
 export class AgentFailure extends Error {
   constructor(
     readonly agentId: string,
     message: string,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown; trace?: AgentTrace },
   ) {
     super(`${agentId}: ${message}`, options);
     this.name = "AgentFailure";
+    this.trace = options?.trace;
   }
+
+  /** Present whenever the agent got far enough to record anything. */
+  readonly trace?: AgentTrace;
 }
 
 const DEFAULT_MAX_TURNS = 12;
@@ -58,10 +69,31 @@ export async function runAgent<T>(options: AgentRunOptions<T>): Promise<AgentRun
   const tools = [...investigationTools(options.toolContext), options.submitTool];
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: options.task }];
 
+  const recorder = new TraceRecorder(
+    options.agentId,
+    options.phase ?? "ANALYZE",
+    options.promptVersion ?? "unversioned",
+    options.task,
+  );
+
   let inputTokens = 0;
   let outputTokens = 0;
   let toolCalls = 0;
+  let spentCents = 0;
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+
+  const fail = (message: string): never => {
+    throw new AgentFailure(options.agentId, message, {
+      trace: recorder.finish({
+        model: options.model,
+        inputTokens,
+        outputTokens,
+        costCents: spentCents,
+        status: "failed",
+        error: message,
+      }),
+    });
+  };
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     options.budget.assertCanSpend();
@@ -78,14 +110,24 @@ export async function runAgent<T>(options: AgentRunOptions<T>): Promise<AgentRun
     options.budget.record(response.model, response.usage);
     inputTokens += response.usage.inputTokens;
     outputTokens += response.usage.outputTokens;
-
-    if (response.stopReason === "refusal") {
-      throw new AgentFailure(options.agentId, "the model declined this request");
-    }
+    spentCents += costCents(response.model, response.usage);
 
     const toolUses = response.content.filter(
       (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
     );
+
+    recorder.recordTurn({
+      turn,
+      inputTokens: response.usage.inputTokens,
+      outputTokens: response.usage.outputTokens,
+      stopReason: response.stopReason,
+      text: textOf(response.content),
+      toolNames: toolUses.map((use) => use.name),
+    });
+
+    if (response.stopReason === "refusal") {
+      fail("the model declined this request");
+    }
 
     if (toolUses.length === 0) {
       // No tool call and no submission: nudge once, then give up rather than
@@ -113,8 +155,24 @@ export async function runAgent<T>(options: AgentRunOptions<T>): Promise<AgentRun
           outputTokens,
           turns: turn,
           toolCalls,
+          trace: recorder.finish({
+            model: response.model,
+            inputTokens,
+            outputTokens,
+            costCents: spentCents,
+            status: "succeeded",
+          }),
         };
       }
+      recorder.recordTurn({
+        turn,
+        inputTokens: 0,
+        outputTokens: 0,
+        stopReason: "rejected",
+        text: "",
+        toolNames: [],
+        rejection: validated.error,
+      });
       // Hand the validation error back and let the model correct itself.
       messages.push({
         role: "user",
@@ -134,15 +192,35 @@ export async function runAgent<T>(options: AgentRunOptions<T>): Promise<AgentRun
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const use of toolUses) {
       toolCalls++;
+      const startedAt = Date.now();
       try {
         const output = await runTool(use.name, use.input as Record<string, unknown>, options.toolContext);
+        recorder.recordToolCall({
+          turn,
+          tool: use.name,
+          input: use.input as Record<string, unknown>,
+          result: output,
+          resultBytes: output.length,
+          failed: false,
+          durationMs: Date.now() - startedAt,
+        });
         results.push({ type: "tool_result", tool_use_id: use.id, content: output });
       } catch (error) {
+        const message = `Tool failed: ${(error as Error).message}`;
+        recorder.recordToolCall({
+          turn,
+          tool: use.name,
+          input: use.input as Record<string, unknown>,
+          result: message,
+          resultBytes: message.length,
+          failed: true,
+          durationMs: Date.now() - startedAt,
+        });
         results.push({
           type: "tool_result",
           tool_use_id: use.id,
           is_error: true,
-          content: `Tool failed: ${(error as Error).message}`,
+          content: message,
         });
       }
     }
@@ -150,7 +228,7 @@ export async function runAgent<T>(options: AgentRunOptions<T>): Promise<AgentRun
     messages.push({ role: "user", content: results });
   }
 
-  throw new AgentFailure(options.agentId, `did not submit a conclusion within ${maxTurns} turns`);
+  return fail(`did not submit a conclusion within ${maxTurns} turns`);
 }
 
 function textOf(content: readonly Anthropic.ContentBlock[]): string {

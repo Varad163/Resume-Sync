@@ -109,6 +109,8 @@ export async function assessImpact(input: OracleInput): Promise<AgentRunResult<O
 
   return runAgent<OracleAssessment[]>({
     agentId: "oracle",
+    phase: "ANALYZE",
+    promptVersion: ORACLE_PROMPT_VERSION,
     model: MODELS.reasoning,
     effort: "medium",
     system: SYSTEM,

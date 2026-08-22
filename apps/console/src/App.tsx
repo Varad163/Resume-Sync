@@ -10,7 +10,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Finding, MigrationPlan } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
-import { api, type AuditEntry, type Project, type ScanDetail } from "./api.js";
+import {
+  api,
+  type AgentTrace,
+  type AuditEntry,
+  type CollectorRun,
+  type Project,
+  type ScanDetail,
+} from "./api.js";
+import { AgentsView } from "./agents.js";
 import { Empty, FindingsTable, PhaseTrail, Readout, Spectrum } from "./components.js";
 import type { ScanRecord } from "@ironbastion/core";
 
@@ -230,13 +238,15 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
 
 // ----------------------------------------------------------------- scan view
 
-type Tab = "findings" | "inventory" | "plan";
+type Tab = "findings" | "agents" | "inventory" | "plan";
 
 function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
   const [detail, setDetail] = useState<ScanDetail>();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [cbom, setCbom] = useState<CycloneDxBom>();
   const [plan, setPlan] = useState<MigrationPlan>();
+  const [traces, setTraces] = useState<AgentTrace[]>([]);
+  const [collectorRuns, setCollectorRuns] = useState<CollectorRun[]>([]);
   const [tab, setTab] = useState<Tab>("findings");
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState<string>();
@@ -249,11 +259,18 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
         if (!live) return;
         setDetail(loaded);
         if (loaded.scan.status === "succeeded") {
-          const [f, b, p] = await Promise.all([api.findings(id), api.cbom(id), api.plan(id)]);
+          const [f, b, p, a] = await Promise.all([
+            api.findings(id),
+            api.cbom(id),
+            api.plan(id),
+            api.agents(id),
+          ]);
           if (!live) return;
           setFindings(f.findings);
           setCbom(b);
           setPlan(p.plan);
+          setTraces(a.traces);
+          setCollectorRuns(a.collectorRuns);
         }
       } catch (cause) {
         if (live) setError((cause as Error).message);
@@ -351,7 +368,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
       ) : null}
 
       <div className="tabs">
-        {(["findings", "inventory", "plan"] as Tab[]).map((name) => (
+        {(["findings", "agents", "inventory", "plan"] as Tab[]).map((name) => (
           <button
             key={name}
             type="button"
@@ -378,6 +395,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
         )
       ) : null}
 
+      {tab === "agents" ? <AgentsView traces={traces} collectorRuns={collectorRuns} /> : null}
       {tab === "inventory" ? <Inventory cbom={cbom} notes={detail.notes} /> : null}
       {tab === "plan" ? <Plan plan={plan} /> : null}
     </>

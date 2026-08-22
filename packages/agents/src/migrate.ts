@@ -189,6 +189,8 @@ export async function planMigration(input: MigrateInput): Promise<AgentRunResult
 
   return runAgent<PlanSubmission>({
     agentId: "migrate",
+    phase: "PLAN",
+    promptVersion: MIGRATE_PROMPT_VERSION,
     model: MODELS.reasoning,
     effort: "high",
     system: SYSTEM,

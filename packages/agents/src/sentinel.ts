@@ -122,6 +122,8 @@ export async function adjudicate(
 
   return runAgent<SentinelVerdict[]>({
     agentId: "sentinel",
+    phase: "ANALYZE",
+    promptVersion: SENTINEL_PROMPT_VERSION,
     model: MODELS.reasoning,
     effort: "medium",
     system: SYSTEM,

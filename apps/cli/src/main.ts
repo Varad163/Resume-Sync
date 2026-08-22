@@ -15,6 +15,7 @@ import {
   configuredProvider,
   createAwsClient,
   createDirectClient,
+  createSimulatedClient,
   runCampaign,
   type ModelClient,
 } from "@ironbastion/agents";
@@ -130,6 +131,7 @@ async function createClient(provider: string): Promise<ModelClient | null> {
   try {
     if (provider === "aws") return await createAwsClient();
     if (provider === "anthropic") return await createDirectClient();
+    if (provider === "simulated") return createSimulatedClient();
   } catch (error) {
     process.stderr.write(`  model client unavailable (${(error as Error).message}); using rules\n`);
   }

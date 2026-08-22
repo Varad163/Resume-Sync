@@ -40,6 +40,9 @@ export interface ModelClient {
   complete(request: ModelRequest): Promise<ModelResponse>;
 }
 
+/** Costs nothing and calls nothing; see simulated.ts for why it exists. */
+export { createSimulatedClient, SIMULATED_MODEL } from "./simulated.js";
+
 export const MODELS = {
   /** Adjudication and planning — the judgement calls. */
   reasoning: "claude-opus-5",
@@ -126,11 +129,16 @@ export async function createDirectClient(): Promise<ModelClient> {
   };
 }
 
-export type ProviderName = "aws" | "anthropic" | "deterministic";
+export type ProviderName = "aws" | "anthropic" | "simulated" | "deterministic";
 
 export function configuredProvider(env: NodeJS.ProcessEnv = process.env): ProviderName {
   const explicit = env["IRONBASTION_MODEL_PROVIDER"];
-  if (explicit === "aws" || explicit === "anthropic" || explicit === "deterministic") {
+  if (
+    explicit === "aws" ||
+    explicit === "anthropic" ||
+    explicit === "simulated" ||
+    explicit === "deterministic"
+  ) {
     return explicit;
   }
   if (env["ANTHROPIC_AWS_WORKSPACE_ID"] && env["AWS_REGION"]) return "aws";

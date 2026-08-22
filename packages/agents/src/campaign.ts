@@ -40,6 +40,8 @@ import {
   deterministicPlan,
 } from "./deterministic.js";
 import type { ToolContext } from "./tools.js";
+import { ruleTrace, withDecisions, type AgentDecision, type AgentTrace } from "./trace.js";
+import { AgentFailure } from "./runtime.js";
 
 /** Candidates per model call. Small enough to stay sharp, large enough to be cheap. */
 const BATCH_SIZE = 12;
@@ -65,6 +67,20 @@ export interface CampaignResult {
   readonly notes: readonly string[];
   readonly modelJudged: number;
   readonly ruleJudged: number;
+  /** What every agent did, in the order they ran. */
+  readonly traces: readonly AgentTrace[];
+  /** Collector-by-collector discovery record, so DISCOVER is visible too. */
+  readonly collectorRuns: readonly CollectorRun[];
+}
+
+export interface CollectorRun {
+  readonly collectorId: string;
+  readonly version: string;
+  readonly target: string;
+  readonly unitsScanned: number;
+  readonly candidates: number;
+  readonly durationMs: number;
+  readonly notes: readonly string[];
 }
 
 export async function runCampaign(input: CampaignInput): Promise<CampaignResult> {
@@ -83,15 +99,27 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
   };
 
   const candidates: Candidate[] = [];
+  const collectorRuns: CollectorRun[] = [];
+  const traces: AgentTrace[] = [];
   let unitsScanned = 0;
 
   for (const target of scan.targets) {
     for (const collector of ALL_COLLECTORS) {
       if (!collector.supports(target)) continue;
+      const startedAt = Date.now();
       const output = await collector.collect(target, collectorContext);
       candidates.push(...output.candidates);
       unitsScanned += output.unitsScanned;
       notes.push(...output.notes);
+      collectorRuns.push({
+        collectorId: collector.id,
+        version: collector.version,
+        target: describeTarget(target),
+        unitsScanned: output.unitsScanned,
+        candidates: output.candidates.length,
+        durationMs: Date.now() - startedAt,
+        notes: output.notes,
+      });
     }
   }
   log(`discover: ${candidates.length} candidates from ${unitsScanned} units`);
@@ -118,20 +146,48 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
             provenance: { ...provenance, rationale: verdict.rationale },
           });
         }
+        traces.push(
+          withDecisions(
+            run.trace,
+            run.value.map((verdict) => ({
+              subject: titleOf(batch, verdict.candidateId),
+              outcome: `${verdict.status}, reachability ${verdict.reachability}${verdict.resolvedAlgorithm ? `, resolved to ${verdict.resolvedAlgorithm}` : ""}`,
+              confidence: verdict.confidence,
+              rationale: verdict.rationale,
+            })),
+          ),
+        );
         modelJudged += run.value.length;
         continue;
       } catch (error) {
         notes.push(`sentinel fell back to rules for ${batch.length} candidate(s): ${(error as Error).message}`);
+        if (error instanceof AgentFailure && error.trace) traces.push(error.trace);
         if (!(error instanceof BudgetExhausted)) log(`sentinel error: ${(error as Error).message}`);
       }
     }
-    for (const verdict of deterministicAdjudicate(batch)) {
+    const ruleStarted = Date.now();
+    const ruleVerdicts = deterministicAdjudicate(batch);
+    for (const verdict of ruleVerdicts) {
       verdicts.set(verdict.candidateId, {
         verdict,
         provenance: ruleProvenance("sentinel", verdict.rationale),
       });
       ruleJudged++;
     }
+    traces.push(
+      ruleTrace({
+        agentId: "sentinel",
+        phase: "ANALYZE",
+        task: `Adjudicate ${batch.length} candidate finding(s): is each one real, and does it run in production?`,
+        durationMs: Date.now() - ruleStarted,
+        decisions: ruleVerdicts.map((verdict) => ({
+          subject: titleOf(batch, verdict.candidateId),
+          outcome: `${verdict.status}, reachability ${verdict.reachability}`,
+          confidence: verdict.confidence,
+          rationale: verdict.rationale,
+        })),
+      }),
+    );
   }
 
   // Resolution can change what the algorithm *is*, so apply it before scoring.
@@ -157,17 +213,45 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
             provenance: { ...provenance, rationale: assessment.rationale },
           });
         }
+        traces.push(
+          withDecisions(
+            run.trace,
+            run.value.map((assessment) => ({
+              subject: titleOf(batch, assessment.candidateId),
+              outcome: `data lifetime ${assessment.dataLifetime}, exposure ${assessment.exposure}`,
+              confidence: assessment.confidence,
+              rationale: assessment.rationale,
+            })),
+          ),
+        );
         continue;
       } catch (error) {
         notes.push(`oracle fell back to rules for ${batch.length} finding(s): ${(error as Error).message}`);
+        if (error instanceof AgentFailure && error.trace) traces.push(error.trace);
       }
     }
-    for (const assessment of deterministicAssess(batch)) {
+    const oracleStarted = Date.now();
+    const ruleAssessments = deterministicAssess(batch);
+    for (const assessment of ruleAssessments) {
       assessments.set(assessment.candidateId, {
         assessment,
         provenance: ruleProvenance("oracle", assessment.rationale),
       });
     }
+    traces.push(
+      ruleTrace({
+        agentId: "oracle",
+        phase: "ANALYZE",
+        task: `Establish what ${batch.length} finding(s) protect: how long the data stays sensitive, and how exposed the component is.`,
+        durationMs: Date.now() - oracleStarted,
+        decisions: ruleAssessments.map((assessment) => ({
+          subject: titleOf(batch, assessment.candidateId),
+          outcome: `data lifetime ${assessment.dataLifetime}, exposure ${assessment.exposure}`,
+          confidence: assessment.confidence,
+          rationale: assessment.rationale,
+        })),
+      }),
+    );
   }
 
   const findings: Finding[] = kept.map((candidate) => {
@@ -220,9 +304,36 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
     try {
       const run = await summariseInventory({ bom: cbom, client: input.client, budget, toolContext, log });
       inventory = run.value;
+      traces.push(
+        withDecisions(run.trace, [
+          { subject: "Inventory summary", outcome: "written", rationale: run.value.summary },
+          ...run.value.observations.map((observation) => ({
+            subject: "Observation",
+            outcome: "recorded",
+            rationale: observation,
+          })),
+        ]),
+      );
     } catch (error) {
       notes.push(`atlas summary unavailable: ${(error as Error).message}`);
+      if (error instanceof AgentFailure && error.trace) traces.push(error.trace);
     }
+  } else if (cbom.components.length > 0) {
+    traces.push(
+      ruleTrace({
+        agentId: "atlas",
+        phase: "PLAN",
+        task: `Read the assembled CBOM of ${cbom.components.length} asset(s) and write what it means.`,
+        durationMs: 0,
+        decisions: [
+          {
+            subject: "Inventory summary",
+            outcome: "counted only",
+            rationale: inventory.summary,
+          },
+        ],
+      }),
+    );
   }
 
   let submission: PlanSubmission;
@@ -232,14 +343,18 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
       const run = await planMigration({ findings: confirmed, client: input.client, budget, toolContext, log });
       submission = run.value;
       planProvenance = agentProvenance("migrate", MIGRATE_PROMPT_VERSION, run);
+      traces.push(withDecisions(run.trace, planDecisions(submission)));
     } catch (error) {
       notes.push(`migrate fell back to rules: ${(error as Error).message}`);
+      if (error instanceof AgentFailure && error.trace) traces.push(error.trace);
       submission = deterministicPlan(confirmed);
       planProvenance = ruleProvenance("migrate", submission.summary);
+      traces.push(rulePlanTrace(confirmed.length, submission));
     }
   } else {
     submission = deterministicPlan(confirmed);
     planProvenance = ruleProvenance("migrate", submission.summary);
+    if (confirmed.length > 0) traces.push(rulePlanTrace(confirmed.length, submission));
   }
 
   const plan = toMigrationPlan(scan.id, submission, planProvenance, confirmed);
@@ -268,6 +383,8 @@ export async function runCampaign(input: CampaignInput): Promise<CampaignResult>
   input.onPhase?.("DONE");
   return {
     scan: { ...scan, status: "succeeded", phase: "DONE", finishedAt: new Date().toISOString(), stats },
+    traces,
+    collectorRuns,
     candidates,
     findings: confirmed,
     needsHuman,
@@ -360,6 +477,36 @@ function repoRootOf(targets: readonly ScanTarget[]): string | undefined {
     if (target.kind === "git-repository" && target.localPath) return target.localPath;
   }
   return undefined;
+}
+
+function titleOf(candidates: readonly Candidate[], id: string): string {
+  return candidates.find((candidate) => candidate.id === id)?.title ?? id;
+}
+
+function describeTarget(target: ScanTarget): string {
+  return target.kind === "git-repository"
+    ? `${target.name} (repository)`
+    : `${target.host}:${target.port} (TLS endpoint)`;
+}
+
+function planDecisions(submission: PlanSubmission): AgentDecision[] {
+  return submission.waves.flatMap((wave) =>
+    wave.actions.map((action) => ({
+      subject: `${action.component}: ${action.currentAlgorithm}`,
+      outcome: `${wave.name} — ${action.targetAlgorithm} via ${action.approach} (${action.effort})`,
+      rationale: action.rationale,
+    })),
+  );
+}
+
+function rulePlanTrace(findingCount: number, submission: PlanSubmission): AgentTrace {
+  return ruleTrace({
+    agentId: "migrate",
+    phase: "PLAN",
+    task: `Sequence migration for ${findingCount} confirmed finding(s) against the public milestones.`,
+    durationMs: 0,
+    decisions: planDecisions(submission),
+  });
 }
 
 function chunk<T>(items: readonly T[], size: number): T[][] {

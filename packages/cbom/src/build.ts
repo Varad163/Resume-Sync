@@ -138,7 +138,7 @@ function toComponent(ref: string, group: Finding[]): CycloneDxComponent {
   return {
     type: "cryptographic-asset",
     "bom-ref": ref,
-    name: displayName(head.algorithm, head.parameters.keySize, head.parameters.curve),
+    name: displayName(head.algorithm, head.parameters.keySize, head.parameters.curve, head.title),
     description: entry
       ? `${entry.name}${entry.reference ? ` (${entry.reference})` : ""}`
       : `Unrecognised algorithm reported as ${head.algorithm}`,
@@ -164,10 +164,14 @@ function assetTypeFor(finding: Finding): CryptoProperties["assetType"] {
   if (finding.primitive === "certificate") return "certificate";
   if (finding.primitive === "protocol") return "protocol";
   if (finding.primitive === "key-store") return "related-crypto-material";
+  // A provider or wrapper library is material the estate depends on, not an
+  // algorithm in its own right.
+  if (finding.algorithm === "LIBRARY") return "related-crypto-material";
   return "algorithm";
 }
 
-function displayName(algorithm: string, keySize?: number, curve?: string): string {
+function displayName(algorithm: string, keySize?: number, curve?: string, title?: string): string {
+  if (algorithm === "LIBRARY") return title?.split(" — ")[0] ?? "Cryptographic library";
   const entry = algorithmById(algorithm);
   const base = entry?.name ?? algorithm;
   if (curve) return `${base} (${curve})`;

@@ -9,7 +9,7 @@
 
 import { createDatabase, migrate, upsertUser, createProject, listProjects } from "@ironbastion/db";
 import { createInProcessQueue, createQueue, executeScan, type Queue } from "@ironbastion/runner";
-import { configuredProvider, createAwsClient, createDirectClient, type ModelClient } from "@ironbastion/agents";
+import { configuredProvider, createAwsClient, createDirectClient, createSimulatedClient, type ModelClient } from "@ironbastion/agents";
 import path from "node:path";
 import { createAuthenticator } from "./auth.js";
 import { createServer } from "./server.js";
@@ -72,6 +72,7 @@ async function modelClient(): Promise<ModelClient | null> {
   try {
     if (provider === "aws") return await createAwsClient();
     if (provider === "anthropic") return await createDirectClient();
+    if (provider === "simulated") return createSimulatedClient();
   } catch (error) {
     process.stderr.write(`  model client unavailable: ${(error as Error).message}\n`);
   }

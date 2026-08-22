@@ -31,4 +31,19 @@ export {
   deterministicAssess,
   deterministicPlan,
 } from "./deterministic.js";
-export { runCampaign, type CampaignInput, type CampaignResult } from "./campaign.js";
+export {
+  runCampaign,
+  type CampaignInput,
+  type CampaignResult,
+  type CollectorRun,
+} from "./campaign.js";
+export {
+  TraceRecorder,
+  ruleTrace,
+  withDecisions,
+  type AgentTrace,
+  type AgentDecision,
+  type ToolCallTrace,
+  type TurnTrace,
+} from "./trace.js";
+export { createSimulatedClient, SIMULATED_MODEL } from "./simulated.js";

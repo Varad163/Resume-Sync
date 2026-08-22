@@ -64,6 +64,8 @@ export async function summariseInventory(
 ): Promise<AgentRunResult<InventorySummary>> {
   return runAgent<InventorySummary>({
     agentId: "atlas",
+    phase: "PLAN",
+    promptVersion: ATLAS_PROMPT_VERSION,
     model: MODELS.reasoning,
     effort: "medium",
     system: SYSTEM,

@@ -362,11 +362,20 @@ function resolveNumber(token: Token | undefined, constants: Map<string, string>)
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-/** Classical strength of a named curve, used to weight the finding. */
+/**
+ * Field size of a named curve, in bits — the number everyone calls the key size.
+ *
+ * Not the security strength: secp256r1 is a 256-bit curve offering 128 bits of
+ * classical strength. Reporting 128 here would read as a 128-bit key, which is
+ * a different and wrong claim. Strength is derived downstream where it is
+ * needed, from this.
+ */
 function curveBits(curve: string): number | undefined {
+  const name = curve.toLowerCase();
+  if (name.includes("25519")) return 255;
+  if (name.includes("448")) return 448;
   const match = /(\d{3,4})/.exec(curve);
   if (!match) return undefined;
   const bits = Number.parseInt(match[1]!, 10);
-  if (curve.toLowerCase().startsWith("curve25519") || curve.toLowerCase() === "x25519") return 128;
-  return Number.isNaN(bits) ? undefined : Math.floor(bits / 2);
+  return Number.isNaN(bits) ? undefined : bits;
 }

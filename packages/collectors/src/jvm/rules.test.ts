@@ -70,6 +70,8 @@ describe("detectJvmCrypto", () => {
     const detections = detectJvmCrypto(src);
     expect(detections.find((d) => d.ruleId === "JVM-EC-CURVE")?.parameters.curve).toBe("secp256r1");
     expect(detections.find((d) => d.ruleId === "JVM-KEYPAIR-GEN")?.parameters.curve).toBe("secp256r1");
+    // The field size, not the 128-bit security strength it provides.
+    expect(detections.find((d) => d.ruleId === "JVM-EC-CURVE")?.parameters.keySize).toBe(256);
   });
 
   it("reads the algorithm bound to raw key material", () => {

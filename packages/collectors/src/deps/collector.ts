@@ -109,7 +109,10 @@ function toCandidate(input: {
       algorithm: coordinate,
     }),
     scanId: ctx.scanId,
-    algorithm: entry.defaultAlgorithm ?? "UNRESOLVED",
+    // `LIBRARY`, not `UNRESOLVED`: this dependency pins no algorithm at all,
+    // which is a different thing from an algorithm we failed to resolve.
+    // Conflating them sends a perfectly clear finding to human review.
+    algorithm: entry.defaultAlgorithm ?? "LIBRARY",
     primitive: entry.primitive,
     parameters: {},
     quantum: entry.defaultAlgorithm ? "broken" : "unknown",

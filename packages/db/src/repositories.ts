@@ -218,6 +218,8 @@ export async function completeScan(
     cbom: CycloneDxBom;
     plan: MigrationPlan;
     inventory: unknown;
+    traces?: unknown;
+    collectorRuns?: unknown;
   },
 ): Promise<void> {
   await db.query(
@@ -256,6 +258,8 @@ export async function completeScan(
     ["cbom", input.cbom],
     ["plan", input.plan],
     ["inventory", input.inventory],
+    ["agent-traces", input.traces ?? []],
+    ["collector-runs", input.collectorRuns ?? []],
   ];
   for (const [kind, document] of artefacts) {
     await db.query(

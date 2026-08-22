@@ -25,6 +25,60 @@ export interface ScanDetail {
   inventory?: { summary: string; observations: string[] };
 }
 
+export interface ToolCallTrace {
+  turn: number;
+  tool: string;
+  input: Record<string, unknown>;
+  resultPreview: string;
+  resultBytes: number;
+  failed: boolean;
+  durationMs: number;
+}
+
+export interface TurnTrace {
+  turn: number;
+  inputTokens: number;
+  outputTokens: number;
+  stopReason: string | null;
+  text: string;
+  toolNames: string[];
+  rejection?: string;
+}
+
+export interface AgentDecision {
+  subject: string;
+  outcome: string;
+  confidence?: number;
+  rationale: string;
+}
+
+export interface AgentTrace {
+  agentId: string;
+  phase: string;
+  model: string;
+  promptVersion: string;
+  durationMs: number;
+  turns: TurnTrace[];
+  toolCalls: ToolCallTrace[];
+  inputTokens: number;
+  outputTokens: number;
+  costCents: number;
+  decisions: AgentDecision[];
+  status: string;
+  error?: string;
+  task: string;
+}
+
+export interface CollectorRun {
+  collectorId: string;
+  version: string;
+  target: string;
+  unitsScanned: number;
+  candidates: number;
+  durationMs: number;
+  notes: string[];
+}
+
 export interface AuditEntry {
   actor: string;
   action: string;
@@ -93,6 +147,8 @@ export const api = {
   findings: (id: string) => request<{ findings: Finding[] }>(`/v1/scans/${id}/findings`),
   cbom: (id: string) => request<CycloneDxBom>(`/v1/scans/${id}/cbom`),
   plan: (id: string) => request<{ plan: MigrationPlan }>(`/v1/scans/${id}/plan`),
+  agents: (id: string) =>
+    request<{ traces: AgentTrace[]; collectorRuns: CollectorRun[] }>(`/v1/scans/${id}/agents`),
   audit: () => request<{ entries: AuditEntry[] }>("/v1/audit"),
   startScan: (projectId: string) =>
     request<{ scan: ScanRecord }>("/v1/scans", {

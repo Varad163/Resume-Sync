@@ -80,6 +80,8 @@ export async function executeScan(options: ExecuteOptions): Promise<CampaignResu
       cbom: result.cbom,
       plan: result.plan,
       inventory: result.inventory,
+      traces: result.traces,
+      collectorRuns: result.collectorRuns,
     });
 
     await recordAudit(db, {
@@ -93,6 +95,7 @@ export async function executeScan(options: ExecuteOptions): Promise<CampaignResu
         costCents: result.scan.stats.costCents,
         modelJudged: result.modelJudged,
         ruleJudged: result.ruleJudged,
+        agents: result.traces.map((trace) => `${trace.agentId}:${trace.model}`),
       },
     });
 

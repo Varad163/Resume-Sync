@@ -236,6 +236,21 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     );
   });
 
+  /** What every agent and collector did during this scan. */
+  app.get("/v1/scans/:id/agents", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+    const scan = await getScan(deps.db, principal.tenantId, id);
+    if (!scan) return reply.code(404).send({ error: "not found" });
+
+    const [traces, collectorRuns] = await Promise.all([
+      getArtefact<unknown[]>(deps.db, principal.tenantId, id, "agent-traces"),
+      getArtefact<unknown[]>(deps.db, principal.tenantId, id, "collector-runs"),
+    ]);
+
+    return { traces: traces ?? [], collectorRuns: collectorRuns ?? [] };
+  });
+
   // ---------------------------------------------------------------- audit
   app.get("/v1/audit", async (request) => {
     const principal = must(request);
