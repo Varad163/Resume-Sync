@@ -1,0 +1,103 @@
+/** Typed access to the platform API. One place that knows about transport. */
+
+import type { Finding, MigrationPlan, ScanRecord } from "@ironbastion/core";
+import type { CycloneDxBom } from "@ironbastion/cbom";
+
+export interface Posture {
+  overall: number;
+  severity: string;
+  counts: Record<string, number>;
+}
+
+export interface Project {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string;
+  targets: unknown[];
+  createdAt: string;
+}
+
+export interface ScanDetail {
+  scan: ScanRecord;
+  posture?: Posture;
+  notes: string[];
+  inventory?: { summary: string; observations: string[] };
+}
+
+export interface AuditEntry {
+  actor: string;
+  action: string;
+  subject: string;
+  at: string;
+  detail: Record<string, unknown>;
+}
+
+const TOKEN_KEY = "ironbastion.token";
+
+export function currentToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? "dev.tnt_demo.demo@ironbastion.ai";
+  } catch {
+    return "dev.tnt_demo.demo@ironbastion.ai";
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* a viewer with storage disabled still gets the default token */
+  }
+}
+
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${currentToken()}`,
+      ...(init.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { message?: string; error?: string };
+      message = body.message ?? body.error ?? message;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  return (await response.json()) as T;
+}
+
+export const api = {
+  health: () => request<{ status: string; auth: string; queue: string }>("/health"),
+  projects: () => request<{ projects: Project[] }>("/v1/projects"),
+  scans: (projectId?: string) =>
+    request<{ scans: (ScanRecord & { posture?: Posture })[] }>(
+      `/v1/scans${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
+    ),
+  scan: (id: string) => request<ScanDetail>(`/v1/scans/${id}`),
+  findings: (id: string) => request<{ findings: Finding[] }>(`/v1/scans/${id}/findings`),
+  cbom: (id: string) => request<CycloneDxBom>(`/v1/scans/${id}/cbom`),
+  plan: (id: string) => request<{ plan: MigrationPlan }>(`/v1/scans/${id}/plan`),
+  audit: () => request<{ entries: AuditEntry[] }>("/v1/audit"),
+  startScan: (projectId: string) =>
+    request<{ scan: ScanRecord }>("/v1/scans", {
+      method: "POST",
+      body: JSON.stringify({ projectId }),
+    }),
+  reportUrl: (id: string) => `/v1/scans/${id}/report`,
+};

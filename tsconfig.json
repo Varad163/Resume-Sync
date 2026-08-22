@@ -1,0 +1,62 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@ironbastion/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@ironbastion/collectors": [
+        "packages/collectors/src/index.ts"
+      ],
+      "@ironbastion/cbom": [
+        "packages/cbom/src/index.ts"
+      ],
+      "@ironbastion/risk": [
+        "packages/risk/src/index.ts"
+      ],
+      "@ironbastion/agents": [
+        "packages/agents/src/index.ts"
+      ],
+      "@ironbastion/db": [
+        "packages/db/src/index.ts"
+      ],
+      "@ironbastion/runner": [
+        "packages/runner/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "apps/*/src/**/*",
+    "infra/**/*",
+    "scripts/**/*",
+    "*.ts",
+    "*.mts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/dist",
+    "apps/console/dist"
+  ]
+}

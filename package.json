@@ -1,0 +1,63 @@
+{
+  "name": "ironbastion-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "infra"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "api": "IRONBASTION_AUTH=dev IRONBASTION_INLINE_WORKER=1 IRONBASTION_SEED=1 tsx apps/api/src/main.ts",
+    "worker": "tsx apps/worker/src/main.ts",
+    "console": "vite --config apps/console/vite.config.mts",
+    "console:build": "vite build --config apps/console/vite.config.mts",
+    "scan": "tsx apps/cli/src/main.ts scan",
+    "bundle": "node scripts/bundle.mjs api && node scripts/bundle.mjs worker",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "synth": "cdk synth",
+    "deploy": "npm run console:build && cdk deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "aws-cdk": "^2.1138.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.17.0",
+    "globals": "^17.11.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@anthropic-ai/aws-sdk": "^0.6.5",
+    "@anthropic-ai/sdk": "^0.120.0",
+    "@aws-sdk/client-s3": "^3.1116.0",
+    "@aws-sdk/client-sqs": "^3.1116.0",
+    "@electric-sql/pglite": "^0.5.5",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "aws-cdk-lib": "^2.266.0",
+    "constructs": "^10.8.1",
+    "fast-glob": "3.3.3",
+    "fast-xml-parser": "5.11.0",
+    "fastify": "^5.12.1",
+    "jose": "^6.2.10",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

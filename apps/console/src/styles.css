@@ -1,0 +1,263 @@
+/* ==========================================================================
+   IronBastion console.
+   The instrument language of the marketing site, put to work: cyan means
+   quantum-safe or verified, amber means weakened, red means broken. Colour is
+   never decorative here — it is the same semantic scale the findings use.
+   ========================================================================== */
+
+:root {
+  --void: #07090b;
+  --abyss: #0a0e13;
+  --panel: #0e1319;
+  --raised: #161c24;
+  --edge: #1f2833;
+  --hairline: #2a3541;
+  --tick: #576980;
+
+  --dim: #7b8a9b;
+  --muted: #8c99a8;
+  --body: #c9d2dc;
+  --display: #f2f5f8;
+
+  --quantum: #3fd0e3;
+  --quantum-deep: #1e7f8c;
+  --quantum-ghost: #0f3b42;
+  --legacy: #e0a24f;
+  --critical: #e95555;
+
+  --sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; border-color: var(--edge); }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--body);
+  font-family: var(--sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--quantum-ghost); color: var(--display); }
+
+:focus-visible { outline: 1px solid var(--quantum); outline-offset: 2px; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--void); }
+::-webkit-scrollbar-thumb { background: var(--hairline); border: 3px solid var(--void); }
+
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100%; }
+
+.rail {
+  border-right: 1px solid var(--edge);
+  background: var(--abyss);
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.wordmark {
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 20px 22px;
+  font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 13px; color: var(--display);
+}
+.wordmark b { font-weight: 800; }
+.wordmark span { color: var(--muted); }
+
+.rail nav { display: flex; flex-direction: column; }
+
+.rail a, .rail button.navitem {
+  appearance: none; background: none; border: 0; text-align: left;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); padding: 11px 20px; cursor: pointer;
+  border-left: 2px solid transparent; text-decoration: none;
+}
+.rail button.navitem:hover { color: var(--display); background: var(--panel); }
+.rail button.navitem[aria-current="page"] {
+  color: var(--quantum); border-left-color: var(--quantum); background: var(--panel);
+}
+
+.rail .foot { margin-top: auto; padding: 16px 20px 0; border-top: 1px solid var(--edge); }
+
+.main { min-width: 0; padding: 32px 40px 80px; max-width: 1280px; }
+
+/* ------------------------------------------------------------------- head */
+
+.pagehead { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+  padding-bottom: 18px; border-bottom: 1px solid var(--edge); margin-bottom: 28px; }
+.pagehead h1 { font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; margin: 6px 0 0;
+  color: var(--display); font-weight: 700; }
+.pagehead p { margin: 8px 0 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+
+/* ------------------------------------------------------------------ cards */
+
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px; background: var(--edge); border: 1px solid var(--edge); margin-bottom: 28px; }
+.readout > div { background: var(--panel); padding: 16px 18px; }
+.readout .value { font-family: var(--mono); font-size: 27px; font-weight: 600;
+  color: var(--display); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.readout .sub { color: var(--dim); font-size: 11px; margin-top: 5px; }
+
+/* --------------------------------------------------------------- spectrum */
+/* The signature: every finding as a tick on a 0-100 measurement scale. */
+
+.spectrum { border: 1px solid var(--edge); background: var(--panel); margin-bottom: 28px; }
+.spectrum .top { display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--edge); }
+.spectrum .track { position: relative; height: 84px; padding: 0 16px; }
+.spectrum .grid { position: absolute; inset: 0 16px; }
+.spectrum .grid i { position: absolute; top: 0; bottom: 18px; width: 1px; background: var(--edge); }
+.spectrum .grid b { position: absolute; bottom: 0; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 9px; color: var(--tick); font-weight: 400; }
+.spectrum .tick {
+  position: absolute; bottom: 18px; width: 2px; background: var(--quantum);
+  border: 0; padding: 0; cursor: pointer; transform-origin: bottom;
+}
+.spectrum .tick:hover { width: 4px; }
+.spectrum .tick.broken { background: var(--critical); }
+.spectrum .tick.weakened { background: var(--legacy); }
+.spectrum .tick.safe { background: var(--quantum); }
+.spectrum .tick.unknown { background: var(--tick); }
+.spectrum .legend { display: flex; gap: 18px; padding: 10px 16px; border-top: 1px solid var(--edge); }
+.spectrum .legend span { display: flex; align-items: center; gap: 7px; font-family: var(--mono);
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+.spectrum .legend i { width: 8px; height: 8px; display: inline-block; }
+
+@keyframes tick-rise { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+.spectrum .tick { animation: tick-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* ------------------------------------------------------------------ table */
+
+table.data { width: 100%; border-collapse: collapse; }
+table.data th {
+  text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--dim); font-weight: 500;
+  padding: 10px 14px 10px 0; border-bottom: 1px solid var(--edge);
+}
+table.data td { padding: 13px 14px 13px 0; border-bottom: 1px solid var(--edge); vertical-align: top;
+  font-size: 13.5px; }
+table.data tr.row:hover td { background: var(--panel); }
+table.data tr.row { cursor: pointer; }
+
+.score { font-family: var(--mono); font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+.sev-critical { color: var(--critical); }
+.sev-high { color: var(--legacy); }
+.sev-medium { color: var(--legacy); }
+.sev-low { color: var(--quantum); }
+.sev-informational { color: var(--dim); }
+
+.title { color: var(--display); font-weight: 500; }
+.where { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 4px; }
+.arrow { color: var(--quantum); font-family: var(--mono); font-size: 12px; }
+
+/* The provenance line: what found it, and who judged it. */
+.prov { font-family: var(--mono); font-size: 10px; color: var(--tick); margin-top: 6px;
+  letter-spacing: 0.04em; }
+.prov b { color: var(--muted); font-weight: 500; }
+.prov .rules { color: var(--legacy); }
+
+.detail { background: var(--abyss); border-left: 2px solid var(--quantum-deep); }
+.detail td { padding: 18px 20px !important; }
+.detail h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--dim); font-weight: 500; }
+.detail p { margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: var(--body); max-width: 78ch; }
+.detail pre { margin: 0 0 16px; background: var(--void); border: 1px solid var(--edge); padding: 12px 14px;
+  overflow-x: auto; font-family: var(--mono); font-size: 11.5px; color: var(--body); line-height: 1.6; }
+.factors { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px;
+  background: var(--edge); border: 1px solid var(--edge); margin-bottom: 16px; }
+.factors > div { background: var(--panel); padding: 10px 12px; }
+.factors .bar { height: 3px; background: var(--edge); margin-top: 7px; }
+.factors .bar i { display: block; height: 3px; background: var(--quantum); }
+
+/* --------------------------------------------------------------- controls */
+
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--edge); margin-bottom: 24px; }
+.tabs button {
+  appearance: none; background: none; border: 0; border-bottom: 2px solid transparent;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); padding: 12px 18px 11px; cursor: pointer;
+}
+.tabs button:hover { color: var(--display); }
+.tabs button[aria-selected="true"] { color: var(--quantum); border-bottom-color: var(--quantum); }
+
+.btn {
+  appearance: none; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; padding: 12px 18px; cursor: pointer; text-decoration: none;
+  border: 1px solid var(--quantum-deep); background: rgba(15, 59, 66, 0.35); color: var(--quantum);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn:hover { background: rgba(15, 59, 66, 0.8); color: var(--display); }
+.btn.primary { background: var(--quantum); border-color: var(--quantum); color: var(--void); }
+.btn.primary:hover { background: var(--display); border-color: var(--display); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.ghost { border-color: var(--edge); background: none; color: var(--muted); }
+.btn.ghost:hover { color: var(--display); background: var(--panel); }
+
+.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+.filters button {
+  appearance: none; background: none; border: 1px solid var(--edge); color: var(--muted);
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 7px 12px; cursor: pointer;
+}
+.filters button[aria-pressed="true"] { border-color: var(--quantum-deep); color: var(--quantum);
+  background: rgba(15, 59, 66, 0.35); }
+
+/* ----------------------------------------------------------------- states */
+
+.empty { border: 1px solid var(--edge); background: var(--panel); padding: 44px 32px; text-align: center; }
+.empty h3 { margin: 0 0 8px; color: var(--display); font-size: 18px; font-weight: 600; }
+.empty p { margin: 0 auto 22px; color: var(--muted); font-size: 14px; max-width: 46ch; }
+
+.banner { border: 1px solid var(--edge); border-left: 2px solid var(--legacy); background: var(--panel);
+  padding: 14px 18px; margin-bottom: 24px; font-size: 13px; color: var(--body); }
+.banner b { color: var(--legacy); font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; display: block; margin-bottom: 5px; font-weight: 500; }
+
+.phase { display: flex; gap: 0; align-items: center; font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.14em; text-transform: uppercase; }
+.phase span { color: var(--tick); padding: 0 10px 0 0; }
+.phase span.done { color: var(--quantum); }
+.phase span.active { color: var(--display); }
+
+.wave { border: 1px solid var(--edge); background: var(--panel); margin-bottom: 16px; }
+.wave > header { padding: 16px 20px; border-bottom: 1px solid var(--edge); }
+.wave h3 { margin: 0; font-size: 17px; color: var(--display); font-weight: 600; }
+.wave .why { margin: 8px 0 0; color: var(--muted); font-size: 13px; max-width: 80ch; }
+.wave table { margin: 0; }
+.wave td, .wave th { padding-left: 20px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .rail { position: static; height: auto; flex-direction: row; align-items: center;
+    overflow-x: auto; padding: 12px; }
+  .rail .foot { display: none; }
+  .wordmark { padding: 0 16px 0 8px; }
+  .main { padding: 20px 16px 60px; }
+}
