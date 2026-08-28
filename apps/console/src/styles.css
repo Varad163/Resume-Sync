@@ -321,3 +321,85 @@ table.data.compact td { padding: 9px 12px 9px 0; font-size: 12px; }
 @media (max-width: 1100px) {
   .pipeline { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ------------------------------------------------------------- modal dialog */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-window {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  padding: 30px;
+  width: 680px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: 12px;
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--display);
+}
+.cert-section {
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.cert-section h3 {
+  margin: 0 0 14px 0;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--quantum);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cert-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-family: var(--mono);
+}
+.cert-row .lbl {
+  color: var(--muted);
+}
+.cert-row .val {
+  color: var(--display);
+}
+.cert-row.accent {
+  border-top: 1px solid var(--edge);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.key-box {
+  background: var(--void);
+  border: 1px solid var(--edge);
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--tick);
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 120px;
+  margin-top: 8px;
+}
