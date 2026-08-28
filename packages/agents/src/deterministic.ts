@@ -65,7 +65,7 @@ function reachabilityOf(candidate: Candidate, locator: string): Reachability {
   if (candidate.ambiguity.includes("test-scope") || /(^|\/)(src\/test|tests?)\//.test(locator)) {
     return "test-only";
   }
-  if (candidate.provenance.collectorId === "jvm-deps") return "unknown";
+  if (candidate.provenance.collectorId === "jvm-deps" || candidate.provenance.collectorId === "npm-deps") return "unknown";
   if (/src\/main\//.test(locator)) return "runtime";
   if (candidate.provenance.collectorId === "tls-probe") return "runtime";
   return "unknown";

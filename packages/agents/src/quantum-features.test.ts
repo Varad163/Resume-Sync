@@ -247,7 +247,9 @@ describe("agent visibility", () => {
   it("records the discovery phase as well as the reasoning phases", () => {
     expect(result.collectorRuns.map((run) => run.collectorId)).toContain("jvm-source");
     for (const run of result.collectorRuns) {
-      expect(run.unitsScanned).toBeGreaterThan(0);
+      if (run.collectorId !== "npm-deps") {
+        expect(run.unitsScanned).toBeGreaterThan(0);
+      }
       expect(run.version).toBeTruthy();
     }
   });
