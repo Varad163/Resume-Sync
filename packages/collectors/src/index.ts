@@ -5,8 +5,9 @@ export { tokenizeJava, type Token } from "./jvm/tokenizer.js";
 export { jvmSourceCollector } from "./jvm/source-collector.js";
 export { jvmDependencyCollector } from "./deps/collector.js";
 export { npmDependencyCollector } from "./npm/npm-collector.js";
+export { pypiDependencyCollector } from "./npm/pypi-collector.js";
 export { parsePom, parseGradle, type DeclaredDependency } from "./deps/manifests.js";
-export { LIBRARIES, matchLibrary, matchNpmLibrary, compareVersions } from "./deps/library-registry.js";
+export { LIBRARIES, matchLibrary, matchNpmLibrary, matchPypiLibrary, compareVersions } from "./deps/library-registry.js";
 export {
   tlsProbeCollector,
   observeHandshake,
@@ -20,6 +21,7 @@ export { signatureAlgorithmOf, decodeOid } from "./tls/asn1.js";
 import { jvmSourceCollector } from "./jvm/source-collector.js";
 import { jvmDependencyCollector } from "./deps/collector.js";
 import { npmDependencyCollector } from "./npm/npm-collector.js";
+import { pypiDependencyCollector } from "./npm/pypi-collector.js";
 import { tlsProbeCollector } from "./tls/probe.js";
 import type { Collector } from "./shared/types.js";
 
@@ -28,5 +30,6 @@ export const ALL_COLLECTORS: readonly Collector[] = [
   jvmSourceCollector,
   jvmDependencyCollector,
   npmDependencyCollector,
+  pypiDependencyCollector,
   tlsProbeCollector,
 ];
