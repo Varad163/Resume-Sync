@@ -6,4 +6,5 @@ export * from "./migration.js";
 export * from "./ids.js";
 export * from "./certify.js";
 export * from "./watchtower.js";
+export * from "./migration-simulator.js";
 

@@ -146,7 +146,17 @@ export const api = {
   scan: (id: string) => request<ScanDetail>(`/v1/scans/${id}`),
   findings: (id: string) => request<{ findings: Finding[] }>(`/v1/scans/${id}/findings`),
   cbom: (id: string) => request<CycloneDxBom>(`/v1/scans/${id}/cbom`),
-  plan: (id: string) => request<{ plan: MigrationPlan }>(`/v1/scans/${id}/plan`),
+  plan: (id: string) =>
+    request<{ plan: MigrationPlan; customPlan: MigrationPlan | null }>(`/v1/scans/${id}/plan`),
+  saveCustomPlan: (id: string, plan: MigrationPlan) =>
+    request<{ plan: MigrationPlan }>(`/v1/scans/${id}/plan/custom`, {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    }),
+  resetCustomPlan: (id: string) =>
+    request<{ status: string }>(`/v1/scans/${id}/plan/custom`, {
+      method: "DELETE",
+    }),
   agents: (id: string) =>
     request<{ traces: AgentTrace[]; collectorRuns: CollectorRun[] }>(`/v1/scans/${id}/agents`),
   audit: () => request<{ entries: AuditEntry[] }>("/v1/audit"),

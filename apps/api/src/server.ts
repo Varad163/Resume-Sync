@@ -20,6 +20,7 @@ import {
   generateCertificateKeys,
   isPublished,
   computeWatchtowerDiff,
+  validateMigrationPlanIntegrity,
 } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 import {
@@ -248,9 +249,62 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.get("/v1/scans/:id/plan", async (request, reply) => {
     const principal = must(request);
     const { id } = request.params as { id: string };
-    const plan = await getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan");
+    const [plan, customPlan] = await Promise.all([
+      getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan"),
+      getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "custom-plan"),
+    ]);
     if (!plan) return reply.code(404).send({ error: "no plan for this scan" });
-    return { plan };
+    return { plan, customPlan: customPlan ?? null };
+  });
+
+  app.post("/v1/scans/:id/plan/custom", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as { plan?: MigrationPlan };
+    if (!body?.plan) return reply.code(400).send({ error: "custom plan is required" });
+
+    // Validate existence of original plan
+    const originalPlan = await getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan");
+    if (!originalPlan) return reply.code(404).send({ error: "no original plan found for this scan" });
+
+    // Validate integrity server-side
+    const isValid = validateMigrationPlanIntegrity(originalPlan, body.plan);
+    if (!isValid) return reply.code(400).send({ error: "custom plan integrity validation failed (unauthorized edits detected)" });
+
+    // Store custom-plan artefact
+    await deps.db.query(
+      `INSERT INTO artefacts (scan_id, tenant_id, kind, document) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (scan_id, kind) DO UPDATE SET document = EXCLUDED.document`,
+      [id, principal.tenantId, "custom-plan", JSON.stringify(body.plan)],
+    );
+
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "plan.customize",
+      subject: id,
+    });
+
+    return reply.code(200).send({ plan: body.plan });
+  });
+
+  app.delete("/v1/scans/:id/plan/custom", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+
+    await deps.db.query(
+      `DELETE FROM artefacts WHERE scan_id = $1 AND tenant_id = $2 AND kind = $3`,
+      [id, principal.tenantId, "custom-plan"],
+    );
+
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "plan.reset",
+      subject: id,
+    });
+
+    return reply.code(200).send({ status: "success" });
   });
 
   app.get("/v1/scans/:id/certificate", async (request, reply) => {
