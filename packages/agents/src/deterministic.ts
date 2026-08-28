@@ -66,6 +66,7 @@ function reachabilityOf(candidate: Candidate, locator: string): Reachability {
     return "test-only";
   }
   if (candidate.provenance.collectorId === "jvm-deps" || candidate.provenance.collectorId === "npm-deps" || candidate.provenance.collectorId === "pypi-deps") return "unknown";
+  if (candidate.provenance.collectorId === "python-source") return "runtime";
   if (/src\/main\//.test(locator)) return "runtime";
   if (candidate.provenance.collectorId === "tls-probe") return "runtime";
   return "unknown";
