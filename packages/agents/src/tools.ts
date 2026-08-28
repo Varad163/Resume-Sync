@@ -135,7 +135,7 @@ async function searchRepository(root: string, input: Record<string, unknown>): P
     return `Invalid regular expression: ${(error as Error).message}`;
   }
 
-  const glob = String(input["glob"] ?? "**/*.{java,kt,xml,properties,yaml,yml,gradle,json}");
+  const glob = String(input["glob"] ?? "**/*.{java,kt,xml,properties,yaml,yml,gradle,json,toml,txt}");
   const files = (
     await fg([glob], {
       cwd: root,

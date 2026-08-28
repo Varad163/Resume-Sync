@@ -150,6 +150,37 @@ export const LIBRARIES: readonly LibraryEntry[] = [
     role: "Password hashing",
     defaultAlgorithm: "bcrypt",
   },
+  {
+    coordinate: "cryptography",
+    name: "cryptography",
+    primitive: "unknown",
+    role: "Python Cryptographic Recipes and Primitives",
+  },
+  {
+    coordinate: "pycryptodome",
+    name: "pycryptodome",
+    primitive: "unknown",
+    role: "Python Cryptography Library",
+  },
+  {
+    coordinate: "pynacl",
+    name: "pynacl",
+    primitive: "unknown",
+    role: "Python binding to libsodium",
+  },
+  {
+    coordinate: "pyjwt",
+    name: "pyjwt",
+    primitive: "signature",
+    role: "JSON Web Token implementation in Python",
+    defaultAlgorithm: "RSASSA",
+  },
+  {
+    coordinate: "ecdsa",
+    name: "ecdsa",
+    primitive: "unknown",
+    role: "ECDSA cryptographic library for Python",
+  },
 ];
 
 /** Known-vulnerable version floors, kept separate from capability. */
@@ -174,6 +205,13 @@ export function matchNpmLibrary(packageName: string): LibraryEntry | undefined {
   return LIBRARIES.find((entry) => {
     if (entry.coordinate.includes(":")) return false;
     return entry.coordinate === packageName;
+  });
+}
+
+export function matchPypiLibrary(packageName: string): LibraryEntry | undefined {
+  return LIBRARIES.find((entry) => {
+    if (entry.coordinate.includes(":")) return false;
+    return entry.coordinate.toLowerCase() === packageName.toLowerCase();
   });
 }
 
