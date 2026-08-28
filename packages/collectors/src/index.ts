@@ -6,6 +6,8 @@ export { jvmSourceCollector } from "./jvm/source-collector.js";
 export { jvmDependencyCollector } from "./deps/collector.js";
 export { npmDependencyCollector } from "./npm/npm-collector.js";
 export { pypiDependencyCollector } from "./npm/pypi-collector.js";
+export { scanPythonSource, type PythonDetection } from "./python/rules.js";
+export { pythonSourceCollector } from "./python/source-collector.js";
 export { parsePom, parseGradle, type DeclaredDependency } from "./deps/manifests.js";
 export { LIBRARIES, matchLibrary, matchNpmLibrary, matchPypiLibrary, compareVersions } from "./deps/library-registry.js";
 export {
@@ -22,6 +24,7 @@ import { jvmSourceCollector } from "./jvm/source-collector.js";
 import { jvmDependencyCollector } from "./deps/collector.js";
 import { npmDependencyCollector } from "./npm/npm-collector.js";
 import { pypiDependencyCollector } from "./npm/pypi-collector.js";
+import { pythonSourceCollector } from "./python/source-collector.js";
 import { tlsProbeCollector } from "./tls/probe.js";
 import type { Collector } from "./shared/types.js";
 
@@ -31,5 +34,6 @@ export const ALL_COLLECTORS: readonly Collector[] = [
   jvmDependencyCollector,
   npmDependencyCollector,
   pypiDependencyCollector,
+  pythonSourceCollector,
   tlsProbeCollector,
 ];
