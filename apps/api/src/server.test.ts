@@ -216,6 +216,162 @@ describe("scans", () => {
     expect(response2.json().error).toContain("no CBOM available");
   });
 
+  it("allows a tenant to query, customize, and reset a migration plan, and protects tenant boundaries", async () => {
+    // 1. Setup a project and scan
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "custom-plan-project",
+      targets: [{ kind: "tls-endpoint", id: "e1", host: "api.test", port: 443 }] as never,
+    });
+    const scanResponse = await app.inject({
+      method: "POST",
+      url: "/v1/scans",
+      headers: auth(acme),
+      payload: { projectId: project.id },
+    });
+    const { scan } = scanResponse.json();
+
+    const mockPlanDoc = {
+      scanId: scan.id,
+      generatedAt: new Date().toISOString(),
+      summary: "AI plan",
+      totalEffortDays: 8,
+      milestoneRisks: [],
+      provenance: {
+        source: "agent",
+        agentId: "agent_migrate",
+        model: "model_migrate",
+        promptVersion: "1.0",
+        inputTokens: 10,
+        outputTokens: 10,
+        rationale: "",
+        decidedAt: new Date().toISOString(),
+      },
+      waves: [
+        {
+          id: "wave_1",
+          name: "Wave 1",
+          rationale: "",
+          milestoneId: "deprecation-2030",
+          actions: [
+            {
+              id: "action_1",
+              findingIds: ["f1"],
+              component: "auth",
+              currentAlgorithm: "AES-128",
+              targetAlgorithm: "AES-256",
+              approach: "parameter-change",
+              effort: "M",
+              severity: "medium",
+              rationale: "",
+              dependsOn: [],
+              risks: [],
+              validation: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    // Save the original plan artefact directly to DB
+    await db.query(
+      `INSERT INTO artefacts (scan_id, tenant_id, kind, document) VALUES ($1, $2, $3, $4)`,
+      [scan.id, acme, "plan", JSON.stringify(mockPlanDoc)],
+    );
+
+    // 2. GET scan plan
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/plan`,
+      headers: auth(acme),
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().plan.summary).toBe("AI plan");
+    expect(getRes.json().customPlan).toBeNull();
+
+    // 3. POST custom-plan (reassigning action to another wave but keeping integrity)
+    const customPlanDoc = {
+      ...mockPlanDoc,
+      summary: "Custom plan",
+      waves: [
+        {
+          id: "wave_1",
+          name: "Wave 1",
+          rationale: "",
+          milestoneId: "deprecation-2030",
+          actions: [], // Action moved out of Wave 1
+        },
+        {
+          id: "wave_2",
+          name: "Wave 2",
+          rationale: "",
+          milestoneId: "deprecation-2030",
+          actions: [mockPlanDoc.waves[0]!.actions[0]!], // Action moved here
+        },
+      ],
+    };
+
+    // Try posting with a different tenant (globex) - should return 404/400 due to tenant isolation
+    const globexPostRes = await app.inject({
+      method: "POST",
+      url: `/v1/scans/${scan.id}/plan/custom`,
+      headers: auth(globex),
+      payload: { plan: customPlanDoc },
+    });
+    expect(globexPostRes.statusCode).toBe(404); // Original plan not found for globex
+
+    // Post as acme
+    const acmePostRes = await app.inject({
+      method: "POST",
+      url: `/v1/scans/${scan.id}/plan/custom`,
+      headers: auth(acme),
+      payload: { plan: customPlanDoc },
+    });
+    expect(acmePostRes.statusCode).toBe(200);
+    expect(acmePostRes.json().plan.summary).toBe("Custom plan");
+
+    // Fetch again as acme to verify customPlan is returned
+    const getRes2 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/plan`,
+      headers: auth(acme),
+    });
+    expect(getRes2.statusCode).toBe(200);
+    expect(getRes2.json().customPlan.summary).toBe("Custom plan");
+
+    // Try deleting as globex - should be silent/isolated
+    const globexDeleteRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/scans/${scan.id}/plan/custom`,
+      headers: auth(globex),
+    });
+    expect(globexDeleteRes.statusCode).toBe(200);
+
+    // Fetch again as acme to verify customPlan is still there
+    const getRes3 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/plan`,
+      headers: auth(acme),
+    });
+    expect(getRes3.json().customPlan).not.toBeNull();
+
+    // Reset as acme
+    const acmeDeleteRes = await app.inject({
+      method: "DELETE",
+      url: `/v1/scans/${scan.id}/plan/custom`,
+      headers: auth(acme),
+    });
+    expect(acmeDeleteRes.statusCode).toBe(200);
+
+    // Verify reset reverted to original
+    const getRes4 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/plan`,
+      headers: auth(acme),
+    });
+    expect(getRes4.json().customPlan).toBeNull();
+  });
+
   it("returns insufficient-history when a project has fewer than 2 scans", async () => {
     const project = await createProject(db, { tenantId: acme, name: "watchtower-project", targets: [] });
     const response = await app.inject({
