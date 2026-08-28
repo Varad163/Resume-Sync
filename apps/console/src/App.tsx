@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import type { Finding, MigrationPlan, PqcCertificate } from "@ironbastion/core";
+import type { Finding, MigrationPlan, PqcCertificate, WatchtowerDiff } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 import {
   api,
@@ -238,7 +238,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
 
 // ----------------------------------------------------------------- scan view
 
-type Tab = "findings" | "agents" | "inventory" | "plan";
+type Tab = "findings" | "agents" | "inventory" | "plan" | "watchtower";
 
 function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
   const [detail, setDetail] = useState<ScanDetail>();
@@ -251,6 +251,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState<string>();
   const [certifying, setCertifying] = useState(false);
+  const [watchtowerDiff, setWatchtowerDiff] = useState<WatchtowerDiff | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -260,11 +261,12 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
         if (!live) return;
         setDetail(loaded);
         if (loaded.scan.status === "succeeded") {
-          const [f, b, p, a] = await Promise.all([
+          const [f, b, p, a, w] = await Promise.all([
             api.findings(id),
             api.cbom(id),
             api.plan(id),
             api.agents(id),
+            api.watchtower(loaded.scan.projectId).catch(() => null),
           ]);
           if (!live) return;
           setFindings(f.findings);
@@ -272,6 +274,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
           setPlan(p.plan);
           setTraces(a.traces);
           setCollectorRuns(a.collectorRuns);
+          setWatchtowerDiff(w);
         }
       } catch (cause) {
         if (live) setError((cause as Error).message);
@@ -372,7 +375,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
       ) : null}
 
       <div className="tabs">
-        {(["findings", "agents", "inventory", "plan"] as Tab[]).map((name) => (
+        {(["findings", "agents", "inventory", "plan", "watchtower"] as Tab[]).map((name) => (
           <button
             key={name}
             type="button"
@@ -402,6 +405,7 @@ function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
       {tab === "agents" ? <AgentsView traces={traces} collectorRuns={collectorRuns} /> : null}
       {tab === "inventory" ? <Inventory cbom={cbom} notes={detail.notes} /> : null}
       {tab === "plan" ? <Plan plan={plan} /> : null}
+      {tab === "watchtower" ? <Watchtower diff={watchtowerDiff} /> : null}
 
       {certifying && <CertifyModal scanId={scan.id} onClose={() => setCertifying(false)} />}
     </>
@@ -590,6 +594,201 @@ function Activity() {
             ))}
           </tbody>
         </table>
+      )}
+    </>
+  );
+}
+
+function Watchtower({ diff }: { diff: WatchtowerDiff | null }) {
+  if (!diff) {
+    return <div className="label" style={{ padding: 20 }}>Comparing scans…</div>;
+  }
+
+  if (diff.status === "insufficient-history") {
+    return (
+      <Empty title="Insufficient Scan History">
+        <p>Watchtower requires at least two successful scans for this project to calculate posture differentials.</p>
+      </Empty>
+    );
+  }
+
+  const { scoreShift, previousScore, currentScore, introduced, resolved, persistent } = diff;
+
+  let bannerStyle: React.CSSProperties = {
+    padding: "16px 20px",
+    marginBottom: 24,
+    borderLeft: "4px solid var(--tick)",
+    background: "var(--raised)",
+  };
+  let bannerTitle = "Posture Unchanged";
+  let bannerDesc = `Overall posture score is ${currentScore}/100.`;
+
+  if (scoreShift > 0) {
+    bannerStyle = {
+      padding: "16px 20px",
+      marginBottom: 24,
+      borderLeft: "4px solid var(--quantum)",
+      background: "rgba(63, 208, 227, 0.1)",
+      color: "var(--display)",
+    };
+    bannerTitle = `Posture Improved: +${scoreShift}`;
+    bannerDesc = `Security rating progressed from ${previousScore} to ${currentScore} / 100.`;
+  } else if (scoreShift < 0) {
+    bannerStyle = {
+      padding: "16px 20px",
+      marginBottom: 24,
+      borderLeft: "4px solid var(--critical)",
+      background: "rgba(233, 85, 85, 0.1)",
+      color: "var(--display)",
+    };
+    bannerTitle = `Posture Regressed: ${scoreShift}`;
+    bannerDesc = `Security rating decreased from ${previousScore} to ${currentScore} / 100.`;
+  }
+
+  return (
+    <>
+      <div style={bannerStyle}>
+        <h3 style={{ margin: "0 0 6px 0", fontSize: 16 }}>{bannerTitle}</h3>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--muted)" }}>{bannerDesc}</p>
+      </div>
+
+      <Readout
+        items={[
+          {
+            label: "Introduced",
+            value: introduced.length,
+            sub: "new vulnerabilities",
+            tone: introduced.length > 0 ? "var(--critical)" : undefined,
+          },
+          {
+            label: "Resolved",
+            value: resolved.length,
+            sub: "removed vulnerabilities",
+            tone: resolved.length > 0 ? "var(--quantum)" : undefined,
+          },
+          { label: "Persistent", value: persistent.length, sub: "monitored assets" },
+          {
+            label: "Severity Shift",
+            value: persistent.filter((p) => p.severityChanged).length,
+            sub: "assets changed risk level",
+          },
+        ]}
+      />
+
+      {introduced.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div className="label" style={{ marginBottom: 12, color: "var(--critical)" }}>
+            Introduced Cryptographic Assets
+          </div>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th style={{ width: 140 }}>Primitive</th>
+                <th style={{ width: 120 }}>Component</th>
+                <th style={{ width: 100 }}>Risk Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {introduced.map((f, i) => (
+                <tr key={`${f.id}-${i}`}>
+                  <td>
+                    <div className="title" style={{ color: "var(--critical)" }}>{f.algorithm}</div>
+                    <div className="where">{f.provenance.evidence[0]?.locator ?? "unknown location"}</div>
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>{f.primitive}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{f.component}</td>
+                  <td className="mono" style={{ fontSize: 13, color: "var(--critical)", fontWeight: "bold" }}>
+                    {f.risk.score} ({f.risk.severity.toUpperCase()})
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {resolved.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div className="label" style={{ marginBottom: 12, color: "var(--quantum)" }}>
+            Resolved Cryptographic Assets
+          </div>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th style={{ width: 140 }}>Primitive</th>
+                <th style={{ width: 120 }}>Component</th>
+                <th style={{ width: 100 }}>Former Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resolved.map((f, i) => (
+                <tr key={`${f.id}-${i}`}>
+                  <td>
+                    <div className="title" style={{ color: "var(--quantum)" }}>{f.algorithm}</div>
+                    <div className="where">{f.provenance.evidence[0]?.locator ?? "unknown location"}</div>
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>{f.primitive}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{f.component}</td>
+                  <td className="mono" style={{ fontSize: 13, color: "var(--muted)" }}>
+                    {f.risk.score} ({f.risk.severity.toUpperCase()})
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {persistent.filter((p) => p.scoreDelta !== 0 || p.severityChanged).length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div className="label" style={{ marginBottom: 12 }}>
+            Modified Risk Profiles
+          </div>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Component</th>
+                <th style={{ width: 200 }}>Severity Shift</th>
+                <th style={{ width: 160 }}>Score Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {persistent
+                .filter((p) => p.scoreDelta !== 0 || p.severityChanged)
+                .map((p, i) => (
+                  <tr key={`${p.finding.id}-${i}`}>
+                    <td>
+                      <div className="title">{p.finding.algorithm}</div>
+                      <div className="where">{p.finding.provenance.evidence[0]?.locator ?? "unknown location"}</div>
+                    </td>
+                    <td className="mono" style={{ fontSize: 12 }}>{p.finding.component}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>
+                      {p.severityChanged ? (
+                        <>
+                          <span style={{ color: "var(--muted)" }}>{p.previousSeverity}</span>
+                          {" → "}
+                          <span style={{ color: p.scoreDelta > 0 ? "var(--critical)" : "var(--quantum)" }}>
+                            {p.currentSeverity}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>{p.currentSeverity}</span>
+                      )}
+                    </td>
+                    <td className="mono" style={{ fontSize: 13, fontWeight: "bold" }}>
+                      {p.previousScore} → {p.currentScore}{" "}
+                      <span style={{ color: p.scoreDelta > 0 ? "var(--critical)" : "var(--quantum)" }}>
+                        ({p.scoreDelta > 0 ? `+${p.scoreDelta}` : p.scoreDelta})
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

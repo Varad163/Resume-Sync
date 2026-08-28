@@ -215,6 +215,27 @@ describe("scans", () => {
     expect(response2.statusCode).toBe(400);
     expect(response2.json().error).toContain("no CBOM available");
   });
+
+  it("returns insufficient-history when a project has fewer than 2 scans", async () => {
+    const project = await createProject(db, { tenantId: acme, name: "watchtower-project", targets: [] });
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/projects/${project.id}/watchtower`,
+      headers: auth(acme),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "insufficient-history" });
+  });
+
+  it("refuses to query watchtower for another tenant's project", async () => {
+    const project = await createProject(db, { tenantId: acme, name: "private-project", targets: [] });
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/projects/${project.id}/watchtower`,
+      headers: auth(globex),
+    });
+    expect(response.statusCode).toBe(404);
+  });
 });
 
 describe("audit", () => {
