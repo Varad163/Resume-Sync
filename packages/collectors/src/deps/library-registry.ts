@@ -109,6 +109,47 @@ export const LIBRARIES: readonly LibraryEntry[] = [
     role: "XML signature and encryption",
     defaultAlgorithm: "RSASSA",
   },
+  {
+    coordinate: "crypto-js",
+    name: "crypto-js",
+    primitive: "unknown",
+    role: "JavaScript cryptographic library",
+    notes: "Implements standard symmetric encryption and hashing. Fully quantum vulnerable. No PQC support.",
+  },
+  {
+    coordinate: "node-forge",
+    name: "node-forge",
+    primitive: "unknown",
+    role: "JavaScript cryptography library",
+    notes: "Provides TLS, RSA, and symmetric primitives. Quantum-vulnerable for key exchange and signatures.",
+  },
+  {
+    coordinate: "elliptic",
+    name: "elliptic",
+    primitive: "unknown",
+    role: "Elliptic curve cryptography library",
+    notes: "Implements ECDSA, ECDH, and EdDSA. Fully quantum vulnerable.",
+  },
+  {
+    coordinate: "jose",
+    name: "jose",
+    primitive: "unknown",
+    role: "JSON Web Signatures and Encryption",
+  },
+  {
+    coordinate: "jsonwebtoken",
+    name: "jsonwebtoken",
+    primitive: "signature",
+    role: "JWT signing and verification",
+    defaultAlgorithm: "RSASSA",
+  },
+  {
+    coordinate: "bcrypt",
+    name: "bcrypt",
+    primitive: "kdf",
+    role: "Password hashing",
+    defaultAlgorithm: "bcrypt",
+  },
 ];
 
 /** Known-vulnerable version floors, kept separate from capability. */
@@ -126,6 +167,13 @@ export function matchLibrary(groupId: string, artifactId: string): LibraryEntry 
     if (entry.coordinate === coordinate) return true;
     if (!entry.coordinate.endsWith("*")) return false;
     return coordinate.startsWith(entry.coordinate.slice(0, -1));
+  });
+}
+
+export function matchNpmLibrary(packageName: string): LibraryEntry | undefined {
+  return LIBRARIES.find((entry) => {
+    if (entry.coordinate.includes(":")) return false;
+    return entry.coordinate === packageName;
   });
 }
 
