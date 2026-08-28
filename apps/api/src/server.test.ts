@@ -178,6 +178,43 @@ describe("scans", () => {
     expect(findings.statusCode).toBe(200);
     expect(findings.json().findings).toEqual([]);
   });
+
+  it("exposes the certificate public verification key anonymously", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/certificate-public-key",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().publicKey).toContain("-----BEGIN RSA PUBLIC KEY-----");
+  });
+
+  it("returns 404/400 for certificate requests of scans that have not completed or don't exist", async () => {
+    // Unknown scan
+    const response1 = await app.inject({
+      method: "GET",
+      url: "/v1/scans/unknown-scan-id/certificate",
+      headers: auth(acme),
+    });
+    expect(response1.statusCode).toBe(404);
+
+    // Known scan without CBOM (not completed yet)
+    const project = await createProject(db, { tenantId: acme, name: "p", targets: targets as never });
+    const created = await app.inject({
+      method: "POST",
+      url: "/v1/scans",
+      headers: auth(acme),
+      payload: { projectId: project.id },
+    });
+    const { scan } = created.json();
+
+    const response2 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/certificate`,
+      headers: auth(acme),
+    });
+    expect(response2.statusCode).toBe(400);
+    expect(response2.json().error).toContain("no CBOM available");
+  });
 });
 
 describe("audit", () => {

@@ -16,6 +16,9 @@ import {
   type MigrationPlan,
   type ScanOptions,
   type ScanTarget,
+  generateCertificate,
+  generateCertificateKeys,
+  isPublished,
 } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 import {
@@ -53,6 +56,8 @@ declare module "fastify" {
 export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1_000_000 });
 
+  const { privateKey, publicKey } = generateCertificateKeys();
+
   await app.register(cors, {
     origin: process.env["CORS_ORIGIN"]?.split(",") ?? true,
     credentials: true,
@@ -66,9 +71,19 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     queue: deps.queue.id,
   }));
 
+  app.get("/v1/certificate-public-key", async () => {
+    return { publicKey };
+  });
+
   // Everything below this hook requires a principal.
   app.addHook("preHandler", async (request, reply) => {
-    if (request.url === "/health" || request.method === "OPTIONS") return;
+    if (
+      request.url === "/health" ||
+      request.url === "/v1/certificate-public-key" ||
+      request.method === "OPTIONS"
+    ) {
+      return;
+    }
     try {
       request.principal = await deps.auth.verify(request.headers.authorization);
     } catch (error) {
@@ -203,6 +218,35 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const plan = await getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan");
     if (!plan) return reply.code(404).send({ error: "no plan for this scan" });
     return { plan };
+  });
+
+  app.get("/v1/scans/:id/certificate", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+    const scan = await getScan(deps.db, principal.tenantId, id);
+    if (!scan) return reply.code(404).send({ error: "scan not found" });
+
+    const [cbom, posture, findings, project] = await Promise.all([
+      getArtefact<CycloneDxBom>(deps.db, principal.tenantId, id, "cbom"),
+      scanPosture(deps.db, principal.tenantId, id),
+      listFindings(deps.db, principal.tenantId, id),
+      getProject(deps.db, principal.tenantId, scan.projectId),
+    ]);
+
+    if (!cbom) return reply.code(400).send({ error: "no CBOM available for this scan" });
+
+    const cert = generateCertificate({
+      scanId: id,
+      projectName: project?.name ?? scan.projectId,
+      projectId: scan.projectId,
+      overallPosture: posture?.overall ?? 100,
+      severity: posture?.severity ?? "informational",
+      cbomJson: JSON.stringify(cbom),
+      findingsCount: findings.filter(isPublished).length,
+      privateKeyPem: privateKey,
+    });
+
+    return cert;
   });
 
   /** The printable report. Browsers turn this into the PDF customers file. */

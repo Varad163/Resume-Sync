@@ -4,3 +4,5 @@ export * from "./findings.js";
 export * from "./scan.js";
 export * from "./migration.js";
 export * from "./ids.js";
+export * from "./certify.js";
+
