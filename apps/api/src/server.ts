@@ -19,6 +19,7 @@ import {
   generateCertificate,
   generateCertificateKeys,
   isPublished,
+  computeWatchtowerDiff,
 } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 import {
@@ -124,6 +125,38 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const project = await getProject(deps.db, principal.tenantId, id);
     if (!project) return reply.code(404).send({ error: "not found" });
     return { project };
+  });
+
+  app.get("/v1/projects/:id/watchtower", async (request, reply) => {
+    const principal = must(request);
+    const { id: projectId } = request.params as { id: string };
+
+    const project = await getProject(deps.db, principal.tenantId, projectId);
+    if (!project) return reply.code(404).send({ error: "project not found" });
+
+    const scans = await listScans(deps.db, principal.tenantId, { projectId, limit: 10 });
+    const successful = scans.filter((s) => s.status === "succeeded");
+
+    if (successful.length < 2) {
+      return { status: "insufficient-history" };
+    }
+
+    const currentScan = successful[0]!;
+    const prevScan = successful[1]!;
+
+    const [currentFindings, prevFindings] = await Promise.all([
+      listFindings(deps.db, principal.tenantId, currentScan.id),
+      listFindings(deps.db, principal.tenantId, prevScan.id),
+    ]);
+
+    const diff = computeWatchtowerDiff(
+      prevFindings,
+      currentFindings,
+      prevScan.posture?.overall ?? 100,
+      currentScan.posture?.overall ?? 100,
+    );
+
+    return diff;
   });
 
   // ---------------------------------------------------------------- scans

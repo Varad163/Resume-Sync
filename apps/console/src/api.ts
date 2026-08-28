@@ -1,6 +1,6 @@
 /** Typed access to the platform API. One place that knows about transport. */
 
-import type { Finding, MigrationPlan, ScanRecord, PqcCertificate } from "@ironbastion/core";
+import type { Finding, MigrationPlan, ScanRecord, PqcCertificate, WatchtowerDiff } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 
 export interface Posture {
@@ -157,5 +157,6 @@ export const api = {
     }),
   certificate: (id: string) => request<PqcCertificate>(`/v1/scans/${id}/certificate`),
   publicKey: () => request<{ publicKey: string }>("/v1/certificate-public-key"),
+  watchtower: (projectId: string) => request<WatchtowerDiff>(`/v1/projects/${projectId}/watchtower`),
   reportUrl: (id: string) => `/v1/scans/${id}/report`,
 };
