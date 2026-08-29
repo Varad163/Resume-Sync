@@ -39,6 +39,7 @@ import {
   scanNotes,
   scanPosture,
   updateProjectMonitoring,
+  runInTenantTransaction,
   type Database,
 } from "@ironbastion/db";
 import { resolveRemoteHead, runForgeVerification, type Queue } from "@ironbastion/runner";
@@ -97,10 +98,17 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     }
   });
 
+  const runTx = <T>(request: FastifyRequest, fn: (tx: Database) => Promise<T>): Promise<T> => {
+    const principal = must(request);
+    return runInTenantTransaction(deps.db, principal.tenantId, fn);
+  };
+
   // ------------------------------------------------------------- projects
   app.get("/v1/projects", async (request) => {
-    const principal = must(request);
-    return { projects: await listProjects(deps.db, principal.tenantId) };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      return { projects: await listProjects(tx, principal.tenantId) };
+    });
   });
 
   app.post("/v1/projects", async (request, reply) => {
@@ -108,27 +116,31 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const body = request.body as { name?: string; description?: string; targets?: ScanTarget[] };
     if (!body?.name) return reply.code(400).send({ error: "name is required" });
 
-    const project = await createProject(deps.db, {
-      tenantId: principal.tenantId,
-      name: body.name,
-      description: body.description ?? "",
-      targets: body.targets ?? [],
+    return runTx(request, async (tx) => {
+      const project = await createProject(tx, {
+        tenantId: principal.tenantId,
+        name: body.name!,
+        description: body.description ?? "",
+        targets: body.targets ?? [],
+      });
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "project.create",
+        subject: project.id,
+      });
+      return reply.code(201).send({ project });
     });
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "project.create",
-      subject: project.id,
-    });
-    return reply.code(201).send({ project });
   });
 
   app.get("/v1/projects/:id", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const project = await getProject(deps.db, principal.tenantId, id);
-    if (!project) return reply.code(404).send({ error: "not found" });
-    return { project };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const project = await getProject(tx, principal.tenantId, id);
+      if (!project) return reply.code(404).send({ error: "not found" });
+      return { project };
+    });
   });
 
   app.post("/v1/projects/:id/monitoring", async (request, reply) => {
@@ -143,35 +155,66 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
       return reply.code(400).send({ error: "invalid parameters. interval must be a positive number of minutes" });
     }
 
-    const project = await getProject(deps.db, principal.tenantId, id);
-    if (!project) return reply.code(404).send({ error: "project not found" });
+    return runTx(request, async (tx) => {
+      const project = await getProject(tx, principal.tenantId, id);
+      if (!project) return reply.code(404).send({ error: "project not found" });
 
-    await updateProjectMonitoring(deps.db, principal.tenantId, id, enabled, interval);
+      await updateProjectMonitoring(tx, principal.tenantId, id, enabled, interval);
 
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "project.monitoring_update",
-      subject: id,
-      detail: { enabled, interval },
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "project.monitoring_update",
+        subject: id,
+        detail: { enabled, interval },
+      });
+
+      return { success: true };
     });
-
-    return { success: true };
   });
 
   app.get("/v1/projects/:id/watchtower", async (request, reply) => {
-    const principal = must(request);
-    const { id: projectId } = request.params as { id: string };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id: projectId } = request.params as { id: string };
 
-    const project = await getProject(deps.db, principal.tenantId, projectId);
-    if (!project) return reply.code(404).send({ error: "project not found" });
+      const project = await getProject(tx, principal.tenantId, projectId);
+      if (!project) return reply.code(404).send({ error: "project not found" });
 
-    const scans = await listScans(deps.db, principal.tenantId, { projectId, limit: 10 });
-    const successful = scans.filter((s) => s.status === "succeeded");
+      const scans = await listScans(tx, principal.tenantId, { projectId, limit: 10 });
+      const successful = scans.filter((s) => s.status === "succeeded");
 
-    if (successful.length < 2) {
+      if (successful.length < 2) {
+        return {
+          status: "insufficient-history",
+          history: scans.map((s) => ({
+            id: s.id,
+            status: s.status,
+            startedAt: s.startedAt,
+            finishedAt: s.finishedAt,
+            postureScore: s.posture?.overall ?? null,
+            targets: s.targets,
+          })),
+        };
+      }
+
+      const currentScan = successful[0]!;
+      const prevScan = successful[1]!;
+
+      const [currentFindings, prevFindings] = await Promise.all([
+        listFindings(tx, principal.tenantId, currentScan.id),
+        listFindings(tx, principal.tenantId, prevScan.id),
+      ]);
+
+      const diff = computeWatchtowerDiff(
+        prevFindings,
+        currentFindings,
+        prevScan.posture?.overall ?? 100,
+        currentScan.posture?.overall ?? 100,
+      );
+
       return {
-        status: "insufficient-history",
+        ...diff,
         history: scans.map((s) => ({
           id: s.id,
           status: s.status,
@@ -181,41 +224,14 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
           targets: s.targets,
         })),
       };
-    }
-
-    const currentScan = successful[0]!;
-    const prevScan = successful[1]!;
-
-    const [currentFindings, prevFindings] = await Promise.all([
-      listFindings(deps.db, principal.tenantId, currentScan.id),
-      listFindings(deps.db, principal.tenantId, prevScan.id),
-    ]);
-
-    const diff = computeWatchtowerDiff(
-      prevFindings,
-      currentFindings,
-      prevScan.posture?.overall ?? 100,
-      currentScan.posture?.overall ?? 100,
-    );
-
-    return {
-      ...diff,
-      history: scans.map((s) => ({
-        id: s.id,
-        status: s.status,
-        startedAt: s.startedAt,
-        finishedAt: s.finishedAt,
-        postureScore: s.posture?.overall ?? null,
-        targets: s.targets,
-      })),
-    };
+    });
   });
 
   app.post("/v1/projects/:id/monitor", async (request, reply) => {
     const principal = must(request);
     const { id: projectId } = request.params as { id: string };
 
-    const project = await getProject(deps.db, principal.tenantId, projectId);
+    const project = await runTx(request, (tx) => getProject(tx, principal.tenantId, projectId));
     if (!project) return reply.code(404).send({ error: "project not found" });
 
     const gitTargets = (project.targets || []).filter((t) => t.kind === "git-repository");
@@ -223,7 +239,7 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
       return { status: "no-git-targets" };
     }
 
-    // Run remote checks safely (protecting credentials)
+    // Run remote checks safely (protecting credentials) - OUTSIDE transaction
     let remoteSha: string;
     const firstTarget = gitTargets[0]!;
     try {
@@ -238,44 +254,44 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
       });
     }
 
-    // Check latest scan
-    const scans = await listScans(deps.db, principal.tenantId, { projectId, limit: 10 });
-    const latestScan = scans.find((s) => s.status === "succeeded");
+    // Check latest scan and trigger rescan inside a transaction
+    return runTx(request, async (tx) => {
+      const scans = await listScans(tx, principal.tenantId, { projectId, limit: 10 });
+      const latestScan = scans.find((s) => s.status === "succeeded");
 
-    if (latestScan) {
-      const latestTarget = latestScan.targets.find((t) => t.id === firstTarget.id);
-      // Access commitHash from the target JSONB schema
-      const latestSha = (latestTarget as { commitHash?: string } | undefined)?.commitHash;
+      if (latestScan) {
+        const latestTarget = latestScan.targets.find((t) => t.id === firstTarget.id);
+        const latestSha = (latestTarget as { commitHash?: string } | undefined)?.commitHash;
 
-      if (latestSha === remoteSha) {
-        return {
-          status: "up-to-date",
-          commitHash: remoteSha,
-        };
+        if (latestSha === remoteSha) {
+          return {
+            status: "up-to-date",
+            commitHash: remoteSha,
+          };
+        }
       }
-    }
 
-    // Trigger rescan
-    const scan = await createScan(deps.db, {
-      tenantId: principal.tenantId,
-      projectId: project.id,
-      targets: project.targets,
-      options: DEFAULT_SCAN_OPTIONS,
-    });
+      const scan = await createScan(tx, {
+        tenantId: principal.tenantId,
+        projectId: project.id,
+        targets: project.targets,
+        options: DEFAULT_SCAN_OPTIONS,
+      });
 
-    await deps.queue.enqueue({ scanId: scan.id, tenantId: principal.tenantId });
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "scan.trigger_monitor",
-      subject: scan.id,
-      detail: { projectId: project.id, commitHash: remoteSha },
-    });
+      await deps.queue.enqueue({ scanId: scan.id, tenantId: principal.tenantId });
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "scan.trigger_monitor",
+        subject: scan.id,
+        detail: { projectId: project.id, commitHash: remoteSha },
+      });
 
-    return reply.code(202).send({
-      status: "scan-queued",
-      scan,
-      commitHash: remoteSha,
+      return reply.code(202).send({
+        status: "scan-queued",
+        scan,
+        commitHash: remoteSha,
+      });
     });
   });
 
@@ -289,7 +305,8 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     };
     if (!body?.projectId) return reply.code(400).send({ error: "projectId is required" });
 
-    const project = await getProject(deps.db, principal.tenantId, body.projectId);
+    // Read project inside transaction
+    const project = await runTx(request, (tx) => getProject(tx, principal.tenantId, body.projectId!));
     if (!project) return reply.code(404).send({ error: "project not found" });
 
     const targets = body.targets?.length ? body.targets : project.targets;
@@ -297,83 +314,95 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
       return reply.code(400).send({ error: "the project has no targets to scan" });
     }
 
-    const scan = await createScan(deps.db, {
-      tenantId: principal.tenantId,
-      projectId: project.id,
-      targets,
-      options: { ...DEFAULT_SCAN_OPTIONS, ...body.options },
-    });
+    return runTx(request, async (tx) => {
+      const scan = await createScan(tx, {
+        tenantId: principal.tenantId,
+        projectId: project.id,
+        targets,
+        options: { ...DEFAULT_SCAN_OPTIONS, ...body.options },
+      });
 
-    await deps.queue.enqueue({ scanId: scan.id, tenantId: principal.tenantId });
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "scan.create",
-      subject: scan.id,
-      detail: { projectId: project.id, targets: targets.length },
-    });
+      await deps.queue.enqueue({ scanId: scan.id, tenantId: principal.tenantId });
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "scan.create",
+        subject: scan.id,
+        detail: { projectId: project.id, targets: targets.length },
+      });
 
-    return reply.code(202).send({ scan });
+      return reply.code(202).send({ scan });
+    });
   });
 
   app.get("/v1/scans", async (request) => {
-    const principal = must(request);
-    const { projectId, limit } = request.query as { projectId?: string; limit?: string };
-    const scans = await listScans(deps.db, principal.tenantId, {
-      ...(projectId ? { projectId } : {}),
-      ...(limit ? { limit: Number.parseInt(limit, 10) } : {}),
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { projectId, limit } = request.query as { projectId?: string; limit?: string };
+      const scans = await listScans(tx, principal.tenantId, {
+        ...(projectId ? { projectId } : {}),
+        ...(limit ? { limit: Number.parseInt(limit, 10) } : {}),
+      });
+      return { scans };
     });
-    return { scans };
   });
 
   app.get("/v1/scans/:id", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const scan = await getScan(deps.db, principal.tenantId, id);
-    if (!scan) return reply.code(404).send({ error: "not found" });
-    return {
-      scan,
-      posture: await scanPosture(deps.db, principal.tenantId, id),
-      notes: await scanNotes(deps.db, principal.tenantId, id),
-      inventory: await getArtefact(deps.db, principal.tenantId, id, "inventory"),
-    };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const scan = await getScan(tx, principal.tenantId, id);
+      if (!scan) return reply.code(404).send({ error: "not found" });
+      return {
+        scan,
+        posture: await scanPosture(tx, principal.tenantId, id),
+        notes: await scanNotes(tx, principal.tenantId, id),
+        inventory: await getArtefact(tx, principal.tenantId, id, "inventory"),
+      };
+    });
   });
 
   app.get("/v1/scans/:id/findings", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const { severity, status, limit } = request.query as Record<string, string | undefined>;
-    const scan = await getScan(deps.db, principal.tenantId, id);
-    if (!scan) return reply.code(404).send({ error: "not found" });
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const { severity, status, limit } = request.query as Record<string, string | undefined>;
+      const scan = await getScan(tx, principal.tenantId, id);
+      if (!scan) return reply.code(404).send({ error: "not found" });
 
-    return {
-      findings: await listFindings(deps.db, principal.tenantId, id, {
-        ...(severity ? { severity } : {}),
-        ...(status ? { status } : {}),
-        ...(limit ? { limit: Number.parseInt(limit, 10) } : {}),
-      }),
-    };
+      return {
+        findings: await listFindings(tx, principal.tenantId, id, {
+          ...(severity ? { severity } : {}),
+          ...(status ? { status } : {}),
+          ...(limit ? { limit: Number.parseInt(limit, 10) } : {}),
+        }),
+      };
+    });
   });
 
   app.get("/v1/scans/:id/cbom", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const cbom = await getArtefact<CycloneDxBom>(deps.db, principal.tenantId, id, "cbom");
-    if (!cbom) return reply.code(404).send({ error: "no CBOM for this scan" });
-    return reply
-      .header("content-disposition", `attachment; filename="cbom-${id}.json"`)
-      .send(cbom);
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const cbom = await getArtefact<CycloneDxBom>(tx, principal.tenantId, id, "cbom");
+      if (!cbom) return reply.code(404).send({ error: "no CBOM for this scan" });
+      return reply
+        .header("content-disposition", `attachment; filename="cbom-${id}.json"`)
+        .send(cbom);
+    });
   });
 
   app.get("/v1/scans/:id/plan", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const [plan, customPlan] = await Promise.all([
-      getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan"),
-      getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "custom-plan"),
-    ]);
-    if (!plan) return reply.code(404).send({ error: "no plan for this scan" });
-    return { plan, customPlan: customPlan ?? null };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const [plan, customPlan] = await Promise.all([
+        getArtefact<MigrationPlan>(tx, principal.tenantId, id, "plan"),
+        getArtefact<MigrationPlan>(tx, principal.tenantId, id, "custom-plan"),
+      ]);
+      if (!plan) return reply.code(404).send({ error: "no plan for this scan" });
+      return { plan, customPlan: customPlan ?? null };
+    });
   });
 
   app.post("/v1/scans/:id/plan/custom", async (request, reply) => {
@@ -382,59 +411,65 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const body = request.body as { plan?: MigrationPlan };
     if (!body?.plan) return reply.code(400).send({ error: "custom plan is required" });
 
-    // Validate existence of original plan
-    const originalPlan = await getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan");
-    if (!originalPlan) return reply.code(404).send({ error: "no original plan found for this scan" });
+    return runTx(request, async (tx) => {
+      // Validate existence of original plan
+      const originalPlan = await getArtefact<MigrationPlan>(tx, principal.tenantId, id, "plan");
+      if (!originalPlan) return reply.code(404).send({ error: "no original plan found for this scan" });
 
-    // Validate integrity server-side
-    const isValid = validateMigrationPlanIntegrity(originalPlan, body.plan);
-    if (!isValid) return reply.code(400).send({ error: "custom plan integrity validation failed (unauthorized edits detected)" });
+      // Validate integrity server-side
+      const isValid = validateMigrationPlanIntegrity(originalPlan, body.plan!);
+      if (!isValid) return reply.code(400).send({ error: "custom plan integrity validation failed (unauthorized edits detected)" });
 
-    // Store custom-plan artefact
-    await deps.db.query(
-      `INSERT INTO artefacts (scan_id, tenant_id, kind, document) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (scan_id, kind) DO UPDATE SET document = EXCLUDED.document`,
-      [id, principal.tenantId, "custom-plan", JSON.stringify(body.plan)],
-    );
+      // Store custom-plan artefact
+      await tx.query(
+        `INSERT INTO artefacts (scan_id, tenant_id, kind, document) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (scan_id, kind) DO UPDATE SET document = EXCLUDED.document`,
+        [id, principal.tenantId, "custom-plan", JSON.stringify(body.plan)],
+      );
 
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "plan.customize",
-      subject: id,
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "plan.customize",
+        subject: id,
+      });
+
+      return reply.code(200).send({ plan: body.plan });
     });
-
-    return reply.code(200).send({ plan: body.plan });
   });
 
   app.delete("/v1/scans/:id/plan/custom", async (request, reply) => {
     const principal = must(request);
     const { id } = request.params as { id: string };
 
-    await deps.db.query(
-      `DELETE FROM artefacts WHERE scan_id = $1 AND tenant_id = $2 AND kind = $3`,
-      [id, principal.tenantId, "custom-plan"],
-    );
+    return runTx(request, async (tx) => {
+      await tx.query(
+        `DELETE FROM artefacts WHERE scan_id = $1 AND tenant_id = $2 AND kind = $3`,
+        [id, principal.tenantId, "custom-plan"],
+      );
 
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "plan.reset",
-      subject: id,
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "plan.reset",
+        subject: id,
+      });
+
+      return reply.code(200).send({ status: "success" });
     });
-
-    return reply.code(200).send({ status: "success" });
   });
 
   app.get("/v1/scans/:id/forge", async (request, reply) => {
-    const principal = must(request);
-    const { id: scanId } = request.params as { id: string };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id: scanId } = request.params as { id: string };
 
-    const scan = await getScan(deps.db, principal.tenantId, scanId);
-    if (!scan) return reply.code(404).send({ error: "scan not found" });
+      const scan = await getScan(tx, principal.tenantId, scanId);
+      if (!scan) return reply.code(404).send({ error: "scan not found" });
 
-    const report = await getArtefact<ForgeVerificationReport>(deps.db, principal.tenantId, scanId, "forge");
-    return { report: report ?? null };
+      const report = await getArtefact<ForgeVerificationReport>(tx, principal.tenantId, scanId, "forge");
+      return { report: report ?? null };
+    });
   });
 
   app.post("/v1/scans/:id/forge/results", async (request, reply) => {
@@ -443,27 +478,29 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const body = request.body as { report?: ForgeVerificationReport };
     if (!body?.report) return reply.code(400).send({ error: "verification report is required" });
 
-    const scan = await getScan(deps.db, principal.tenantId, scanId);
-    if (!scan) return reply.code(404).send({ error: "scan not found" });
+    return runTx(request, async (tx) => {
+      const scan = await getScan(tx, principal.tenantId, scanId);
+      if (!scan) return reply.code(404).send({ error: "scan not found" });
 
-    await saveArtefact(deps.db, principal.tenantId, scanId, "forge", body.report);
+      await saveArtefact(tx, principal.tenantId, scanId, "forge", body.report!);
 
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "scan.forge_results",
-      subject: scanId,
-      detail: { overallStatus: body.report.overallStatus },
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "scan.forge_results",
+        subject: scanId,
+        detail: { overallStatus: body.report!.overallStatus },
+      });
+
+      return { status: "success", report: body.report };
     });
-
-    return { status: "success", report: body.report };
   });
 
   app.post("/v1/scans/:id/forge/check", async (request, reply) => {
     const principal = must(request);
     const { id: scanId } = request.params as { id: string };
 
-    const scan = await getScan(deps.db, principal.tenantId, scanId);
+    const scan = await runTx(request, (tx) => getScan(tx, principal.tenantId, scanId));
     if (!scan) return reply.code(404).send({ error: "scan not found" });
 
     const tlsTargets = (scan.targets || []).filter((t) => t.kind === "tls-endpoint");
@@ -472,100 +509,111 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     }
 
     const target = tlsTargets[0]!;
+    // Run network check outside transaction
     const report = await runForgeVerification(scanId, target);
 
-    await saveArtefact(deps.db, principal.tenantId, scanId, "forge", report);
+    return runTx(request, async (tx) => {
+      await saveArtefact(tx, principal.tenantId, scanId, "forge", report);
 
-    await recordAudit(deps.db, {
-      tenantId: principal.tenantId,
-      actor: principal.email,
-      action: "scan.forge_validate",
-      subject: scanId,
-      detail: { overallStatus: report.overallStatus },
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "scan.forge_validate",
+        subject: scanId,
+        detail: { overallStatus: report.overallStatus },
+      });
+
+      return { report };
     });
-
-    return { report };
   });
 
   app.get("/v1/scans/:id/certificate", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const scan = await getScan(deps.db, principal.tenantId, id);
-    if (!scan) return reply.code(404).send({ error: "scan not found" });
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const scan = await getScan(tx, principal.tenantId, id);
+      if (!scan) return reply.code(404).send({ error: "scan not found" });
 
-    const [cbom, posture, findings, project] = await Promise.all([
-      getArtefact<CycloneDxBom>(deps.db, principal.tenantId, id, "cbom"),
-      scanPosture(deps.db, principal.tenantId, id),
-      listFindings(deps.db, principal.tenantId, id),
-      getProject(deps.db, principal.tenantId, scan.projectId),
-    ]);
+      const [cbom, posture, findings, project] = await Promise.all([
+        getArtefact<CycloneDxBom>(tx, principal.tenantId, id, "cbom"),
+        scanPosture(tx, principal.tenantId, id),
+        listFindings(tx, principal.tenantId, id),
+        getProject(tx, principal.tenantId, scan.projectId),
+      ]);
 
-    if (!cbom) return reply.code(400).send({ error: "no CBOM available for this scan" });
+      if (!cbom) return reply.code(400).send({ error: "no CBOM available for this scan" });
 
-    const cert = generateCertificate({
-      scanId: id,
-      projectName: project?.name ?? scan.projectId,
-      projectId: scan.projectId,
-      overallPosture: posture?.overall ?? 100,
-      severity: posture?.severity ?? "informational",
-      cbomJson: JSON.stringify(cbom),
-      findingsCount: findings.filter(isPublished).length,
-      privateKeyPem: privateKey,
+      const cert = generateCertificate({
+        scanId: id,
+        projectName: project?.name ?? scan.projectId,
+        projectId: scan.projectId,
+        overallPosture: posture?.overall ?? 100,
+        severity: posture?.severity ?? "informational",
+        cbomJson: JSON.stringify(cbom),
+        findingsCount: findings.filter(isPublished).length,
+        privateKeyPem: privateKey,
+      });
+
+      return cert;
     });
-
-    return cert;
   });
 
   /** The printable report. Browsers turn this into the PDF customers file. */
   app.get("/v1/scans/:id/report", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const scan = await getScan(deps.db, principal.tenantId, id);
-    if (!scan) return reply.code(404).send({ error: "not found" });
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const scan = await getScan(tx, principal.tenantId, id);
+      if (!scan) return reply.code(404).send({ error: "not found" });
 
-    const [findings, cbom, plan, posture, notes, inventory, project] = await Promise.all([
-      listFindings(deps.db, principal.tenantId, id),
-      getArtefact<CycloneDxBom>(deps.db, principal.tenantId, id, "cbom"),
-      getArtefact<MigrationPlan>(deps.db, principal.tenantId, id, "plan"),
-      scanPosture(deps.db, principal.tenantId, id),
-      scanNotes(deps.db, principal.tenantId, id),
-      getArtefact<{ summary: string; observations: string[] }>(deps.db, principal.tenantId, id, "inventory"),
-      getProject(deps.db, principal.tenantId, scan.projectId),
-    ]);
+      const [findings, cbom, plan, posture, notes, inventory, project] = await Promise.all([
+        listFindings(tx, principal.tenantId, id),
+        getArtefact<CycloneDxBom>(tx, principal.tenantId, id, "cbom"),
+        getArtefact<MigrationPlan>(tx, principal.tenantId, id, "plan"),
+        scanPosture(tx, principal.tenantId, id),
+        scanNotes(tx, principal.tenantId, id),
+        getArtefact<{ summary: string; observations: string[] }>(tx, principal.tenantId, id, "inventory"),
+        getProject(tx, principal.tenantId, scan.projectId),
+      ]);
 
-    return reply.type("text/html").send(
-      renderHtmlReport({
-        scan,
-        projectName: project?.name ?? scan.projectId,
-        findings: findings as Finding[],
-        ...(cbom ? { cbom } : {}),
-        ...(plan ? { plan } : {}),
-        ...(posture ? { posture } : {}),
-        notes,
-        ...(inventory ? { inventory } : {}),
-      }),
-    );
+      return reply.type("text/html").send(
+        renderHtmlReport({
+          scan,
+          projectName: project?.name ?? scan.projectId,
+          findings: findings as Finding[],
+          ...(cbom ? { cbom } : {}),
+          ...(plan ? { plan } : {}),
+          ...(posture ? { posture } : {}),
+          notes,
+          ...(inventory ? { inventory } : {}),
+        }),
+      );
+    });
   });
 
   /** What every agent and collector did during this scan. */
   app.get("/v1/scans/:id/agents", async (request, reply) => {
-    const principal = must(request);
-    const { id } = request.params as { id: string };
-    const scan = await getScan(deps.db, principal.tenantId, id);
-    if (!scan) return reply.code(404).send({ error: "not found" });
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      const { id } = request.params as { id: string };
+      const scan = await getScan(tx, principal.tenantId, id);
+      if (!scan) return reply.code(404).send({ error: "not found" });
 
-    const [traces, collectorRuns] = await Promise.all([
-      getArtefact<unknown[]>(deps.db, principal.tenantId, id, "agent-traces"),
-      getArtefact<unknown[]>(deps.db, principal.tenantId, id, "collector-runs"),
-    ]);
+      const [traces, collectorRuns] = await Promise.all([
+        getArtefact<unknown[]>(tx, principal.tenantId, id, "agent-traces"),
+        getArtefact<unknown[]>(tx, principal.tenantId, id, "collector-runs"),
+      ]);
 
-    return { traces: traces ?? [], collectorRuns: collectorRuns ?? [] };
+      return { traces: traces ?? [], collectorRuns: collectorRuns ?? [] };
+    });
   });
 
   // ---------------------------------------------------------------- audit
   app.get("/v1/audit", async (request) => {
-    const principal = must(request);
-    return { entries: await listAudit(deps.db, principal.tenantId) };
+    return runTx(request, async (tx) => {
+      const principal = must(request);
+      return { entries: await listAudit(tx, principal.tenantId) };
+    });
   });
 
   app.setErrorHandler(async (error: Error & { statusCode?: number }, _request, reply) => {
