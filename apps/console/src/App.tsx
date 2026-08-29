@@ -844,6 +844,52 @@ function Watchtower({
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
 
+  const [project, setProject] = useState<Project | null>(null);
+  const [enabled, setEnabled] = useState(false);
+  const [interval, setIntervalVal] = useState(60);
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string>();
+
+  useEffect(() => {
+    let live = true;
+    const fetchProj = async () => {
+      try {
+        const res = await api.projects();
+        const found = res.projects.find((p) => p.id === projectId);
+        if (found && live) {
+          setProject(found);
+          setEnabled(found.monitoringEnabled ?? false);
+          setIntervalVal(found.monitoringInterval ?? 60);
+        }
+      } catch (err) {
+        console.error("Failed to load project details", err);
+      }
+    };
+    void fetchProj();
+    return () => {
+      live = false;
+    };
+  }, [projectId]);
+
+  const handleSaveSettings = async () => {
+    setUpdating(true);
+    setUpdateError(undefined);
+    try {
+      await api.configureMonitoring(projectId, enabled, interval);
+      const res = await api.projects();
+      const found = res.projects.find((p) => p.id === projectId);
+      if (found) {
+        setProject(found);
+        setEnabled(found.monitoringEnabled ?? false);
+        setIntervalVal(found.monitoringInterval ?? 60);
+      }
+    } catch (err) {
+      setUpdateError((err as Error).message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const handleCheck = async () => {
     setChecking(true);
     setError(undefined);
@@ -864,6 +910,62 @@ function Watchtower({
       setChecking(false);
     }
   };
+
+  const renderSettings = () => (
+    <div style={{ background: "var(--raised)", border: "1px solid var(--edge)", padding: 20, marginBottom: 24 }}>
+      <div className="label" style={{ marginBottom: 12 }}>Continuous Monitoring Settings</div>
+      <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            id="mon-enabled"
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            style={{ width: 16, height: 16, cursor: "pointer" }}
+          />
+          <label htmlFor="mon-enabled" style={{ fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+            Enable Automatic Git Polling
+          </label>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>Interval (minutes):</span>
+          <input
+            type="number"
+            min={1}
+            value={interval}
+            onChange={(e) => setIntervalVal(Number.parseInt(e.target.value, 10) || 60)}
+            style={{ width: 80, padding: "4px 8px", background: "var(--bg)", border: "1px solid var(--edge)", color: "var(--display)" }}
+          />
+        </div>
+
+        <button
+          className="btn"
+          type="button"
+          disabled={updating}
+          onClick={handleSaveSettings}
+          style={{ padding: "4px 12px", minWidth: "auto", fontSize: 12 }}
+        >
+          {updating ? "Saving..." : "Save Settings"}
+        </button>
+
+        {updateError && <span style={{ color: "var(--critical)", fontSize: 12 }}>{updateError}</span>}
+      </div>
+
+      {project && (
+        <div style={{ display: "flex", gap: 24, marginTop: 14, fontSize: 12, color: "var(--muted)", borderTop: "1px solid var(--edge)", paddingTop: 10 }}>
+          <div>
+            Last Checked: <span style={{ color: "var(--display)" }}>{project.lastMonitoredAt ? new Date(project.lastMonitoredAt).toLocaleString() : "Never"}</span>
+          </div>
+          <div>
+            Status: <span style={{ color: project.monitoringEnabled ? "var(--quantum)" : "var(--legacy)", fontWeight: "bold" }}>
+              {project.monitoringEnabled ? "Active (Background Poller)" : "Disabled"}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const renderSyncBar = () => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, background: "var(--raised)", padding: "14px 20px", border: "1px solid var(--edge)" }}>
@@ -931,6 +1033,7 @@ function Watchtower({
     return (
       <>
         {renderSyncBar()}
+        {renderSettings()}
         <div className="label" style={{ padding: 20 }}>Comparing scans…</div>
       </>
     );
@@ -940,6 +1043,7 @@ function Watchtower({
     return (
       <>
         {renderSyncBar()}
+        {renderSettings()}
         <Empty title="Insufficient Scan History">
           <p>Watchtower requires at least two successful scans for this project to calculate posture differentials.</p>
         </Empty>
@@ -984,6 +1088,7 @@ function Watchtower({
   return (
     <>
       {renderSyncBar()}
+      {renderSettings()}
 
       {scoreShift < 0 && introduced.length > 0 && (
         <div style={{ padding: "14px 20px", border: "1px solid var(--critical)", background: "rgba(233, 85, 85, 0.08)", borderRadius: 4, marginBottom: 24, display: "flex", gap: 12, alignItems: "center" }}>

@@ -41,6 +41,9 @@ export interface Project {
   readonly name: string;
   readonly description: string;
   readonly targets: ScanTarget[];
+  readonly monitoringEnabled: boolean;
+  readonly monitoringInterval: number;
+  readonly lastMonitoredAt: string | null;
   readonly createdAt: string;
 }
 
@@ -123,7 +126,7 @@ export async function createProject(
 
 export async function listProjects(db: Database, tenantId: string): Promise<Project[]> {
   const { rows } = await db.query<ProjectRow>(
-    "SELECT id, tenant_id, name, description, targets, created_at FROM projects WHERE tenant_id = $1 ORDER BY created_at DESC",
+    "SELECT id, tenant_id, name, description, targets, monitoring_enabled, monitoring_interval, last_monitored_at, created_at FROM projects WHERE tenant_id = $1 ORDER BY created_at DESC",
     [tenantId],
   );
   return rows.map(toProject);
@@ -135,7 +138,7 @@ export async function getProject(
   id: string,
 ): Promise<Project | undefined> {
   const { rows } = await db.query<ProjectRow>(
-    "SELECT id, tenant_id, name, description, targets, created_at FROM projects WHERE tenant_id = $1 AND id = $2",
+    "SELECT id, tenant_id, name, description, targets, monitoring_enabled, monitoring_interval, last_monitored_at, created_at FROM projects WHERE tenant_id = $1 AND id = $2",
     [tenantId, id],
   );
   return rows[0] ? toProject(rows[0]) : undefined;
@@ -147,6 +150,9 @@ interface ProjectRow {
   name: string;
   description: string;
   targets: ScanTarget[] | string;
+  monitoring_enabled: boolean;
+  monitoring_interval: number;
+  last_monitored_at: string | Date | null;
   created_at: string | Date;
 }
 
@@ -157,8 +163,41 @@ function toProject(row: ProjectRow): Project {
     name: row.name,
     description: row.description,
     targets: parseJson<ScanTarget[]>(row.targets, []),
+    monitoringEnabled: row.monitoring_enabled,
+    monitoringInterval: row.monitoring_interval,
+    lastMonitoredAt: row.last_monitored_at ? asIso(row.last_monitored_at) : null,
     createdAt: asIso(row.created_at),
   };
+}
+
+export async function updateProjectMonitoring(
+  db: Database,
+  tenantId: string,
+  projectId: string,
+  enabled: boolean,
+  intervalMinutes: number,
+): Promise<void> {
+  await db.query(
+    "UPDATE projects SET monitoring_enabled = $1, monitoring_interval = $2 WHERE tenant_id = $3 AND id = $4",
+    [enabled, intervalMinutes, tenantId, projectId],
+  );
+}
+
+export async function updateProjectLastMonitored(
+  db: Database,
+  projectId: string,
+): Promise<void> {
+  await db.query(
+    "UPDATE projects SET last_monitored_at = now() WHERE id = $1",
+    [projectId],
+  );
+}
+
+export async function listActiveMonitoredProjects(db: Database): Promise<Project[]> {
+  const { rows } = await db.query<ProjectRow>(
+    "SELECT id, tenant_id, name, description, targets, monitoring_enabled, monitoring_interval, last_monitored_at, created_at FROM projects WHERE monitoring_enabled = true",
+  );
+  return rows.map(toProject);
 }
 
 // -------------------------------------------------------------------- scans

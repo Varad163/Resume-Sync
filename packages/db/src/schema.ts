@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS projects (
   name          TEXT NOT NULL,
   description   TEXT NOT NULL DEFAULT '',
   targets       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  monitoring_enabled BOOLEAN NOT NULL DEFAULT false,
+  monitoring_interval INTEGER NOT NULL DEFAULT 60,
+  last_monitored_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -100,4 +103,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS audit_tenant_at_idx ON audit_log (tenant_id, at DESC);
+
+-- Migrations for existing databases
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS monitoring_enabled BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS monitoring_interval INTEGER NOT NULL DEFAULT 60;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_monitored_at TIMESTAMPTZ;
 `;

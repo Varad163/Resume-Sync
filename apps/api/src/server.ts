@@ -38,6 +38,7 @@ import {
   saveArtefact,
   scanNotes,
   scanPosture,
+  updateProjectMonitoring,
   type Database,
 } from "@ironbastion/db";
 import { resolveRemoteHead, runForgeVerification, type Queue } from "@ironbastion/runner";
@@ -128,6 +129,34 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const project = await getProject(deps.db, principal.tenantId, id);
     if (!project) return reply.code(404).send({ error: "not found" });
     return { project };
+  });
+
+  app.post("/v1/projects/:id/monitoring", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as { enabled?: boolean; interval?: number };
+
+    const enabled = body.enabled ?? false;
+    const interval = body.interval ?? 60;
+
+    if (typeof enabled !== "boolean" || typeof interval !== "number" || Number.isNaN(interval) || interval < 1) {
+      return reply.code(400).send({ error: "invalid parameters. interval must be a positive number of minutes" });
+    }
+
+    const project = await getProject(deps.db, principal.tenantId, id);
+    if (!project) return reply.code(404).send({ error: "project not found" });
+
+    await updateProjectMonitoring(deps.db, principal.tenantId, id, enabled, interval);
+
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "project.monitoring_update",
+      subject: id,
+      detail: { enabled, interval },
+    });
+
+    return { success: true };
   });
 
   app.get("/v1/projects/:id/watchtower", async (request, reply) => {
