@@ -16,6 +16,7 @@ import {
   type MigrationPlan,
   type ScanOptions,
   type ScanTarget,
+  type ForgeVerificationReport,
   generateCertificate,
   generateCertificateKeys,
   isPublished,
@@ -34,11 +35,12 @@ import {
   listProjects,
   listScans,
   recordAudit,
+  saveArtefact,
   scanNotes,
   scanPosture,
   type Database,
 } from "@ironbastion/db";
-import type { Queue } from "@ironbastion/runner";
+import { resolveRemoteHead, runForgeVerification, type Queue } from "@ironbastion/runner";
 import { AuthError, type Authenticator, type Principal } from "./auth.js";
 import { renderHtmlReport } from "./report.js";
 
@@ -139,7 +141,17 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     const successful = scans.filter((s) => s.status === "succeeded");
 
     if (successful.length < 2) {
-      return { status: "insufficient-history" };
+      return {
+        status: "insufficient-history",
+        history: scans.map((s) => ({
+          id: s.id,
+          status: s.status,
+          startedAt: s.startedAt,
+          finishedAt: s.finishedAt,
+          postureScore: s.posture?.overall ?? null,
+          targets: s.targets,
+        })),
+      };
     }
 
     const currentScan = successful[0]!;
@@ -157,7 +169,85 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
       currentScan.posture?.overall ?? 100,
     );
 
-    return diff;
+    return {
+      ...diff,
+      history: scans.map((s) => ({
+        id: s.id,
+        status: s.status,
+        startedAt: s.startedAt,
+        finishedAt: s.finishedAt,
+        postureScore: s.posture?.overall ?? null,
+        targets: s.targets,
+      })),
+    };
+  });
+
+  app.post("/v1/projects/:id/monitor", async (request, reply) => {
+    const principal = must(request);
+    const { id: projectId } = request.params as { id: string };
+
+    const project = await getProject(deps.db, principal.tenantId, projectId);
+    if (!project) return reply.code(404).send({ error: "project not found" });
+
+    const gitTargets = (project.targets || []).filter((t) => t.kind === "git-repository");
+    if (gitTargets.length === 0) {
+      return { status: "no-git-targets" };
+    }
+
+    // Run remote checks safely (protecting credentials)
+    let remoteSha: string;
+    const firstTarget = gitTargets[0]!;
+    try {
+      remoteSha = await resolveRemoteHead({
+        remoteUrl: firstTarget.remoteUrl!,
+        ref: firstTarget.ref,
+      });
+    } catch {
+      return reply.code(400).send({
+        error: "failed to check remote repository",
+        detail: "ls-remote access check failed or timed out",
+      });
+    }
+
+    // Check latest scan
+    const scans = await listScans(deps.db, principal.tenantId, { projectId, limit: 10 });
+    const latestScan = scans.find((s) => s.status === "succeeded");
+
+    if (latestScan) {
+      const latestTarget = latestScan.targets.find((t) => t.id === firstTarget.id);
+      // Access commitHash from the target JSONB schema
+      const latestSha = (latestTarget as { commitHash?: string } | undefined)?.commitHash;
+
+      if (latestSha === remoteSha) {
+        return {
+          status: "up-to-date",
+          commitHash: remoteSha,
+        };
+      }
+    }
+
+    // Trigger rescan
+    const scan = await createScan(deps.db, {
+      tenantId: principal.tenantId,
+      projectId: project.id,
+      targets: project.targets,
+      options: DEFAULT_SCAN_OPTIONS,
+    });
+
+    await deps.queue.enqueue({ scanId: scan.id, tenantId: principal.tenantId });
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "scan.trigger_monitor",
+      subject: scan.id,
+      detail: { projectId: project.id, commitHash: remoteSha },
+    });
+
+    return reply.code(202).send({
+      status: "scan-queued",
+      scan,
+      commitHash: remoteSha,
+    });
   });
 
   // ---------------------------------------------------------------- scans
@@ -305,6 +395,67 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     });
 
     return reply.code(200).send({ status: "success" });
+  });
+
+  app.get("/v1/scans/:id/forge", async (request, reply) => {
+    const principal = must(request);
+    const { id: scanId } = request.params as { id: string };
+
+    const scan = await getScan(deps.db, principal.tenantId, scanId);
+    if (!scan) return reply.code(404).send({ error: "scan not found" });
+
+    const report = await getArtefact<ForgeVerificationReport>(deps.db, principal.tenantId, scanId, "forge");
+    return { report: report ?? null };
+  });
+
+  app.post("/v1/scans/:id/forge/results", async (request, reply) => {
+    const principal = must(request);
+    const { id: scanId } = request.params as { id: string };
+    const body = request.body as { report?: ForgeVerificationReport };
+    if (!body?.report) return reply.code(400).send({ error: "verification report is required" });
+
+    const scan = await getScan(deps.db, principal.tenantId, scanId);
+    if (!scan) return reply.code(404).send({ error: "scan not found" });
+
+    await saveArtefact(deps.db, principal.tenantId, scanId, "forge", body.report);
+
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "scan.forge_results",
+      subject: scanId,
+      detail: { overallStatus: body.report.overallStatus },
+    });
+
+    return { status: "success", report: body.report };
+  });
+
+  app.post("/v1/scans/:id/forge/check", async (request, reply) => {
+    const principal = must(request);
+    const { id: scanId } = request.params as { id: string };
+
+    const scan = await getScan(deps.db, principal.tenantId, scanId);
+    if (!scan) return reply.code(404).send({ error: "scan not found" });
+
+    const tlsTargets = (scan.targets || []).filter((t) => t.kind === "tls-endpoint");
+    if (tlsTargets.length === 0) {
+      return reply.code(400).send({ error: "scan has no TLS endpoint targets to validate" });
+    }
+
+    const target = tlsTargets[0]!;
+    const report = await runForgeVerification(scanId, target);
+
+    await saveArtefact(deps.db, principal.tenantId, scanId, "forge", report);
+
+    await recordAudit(deps.db, {
+      tenantId: principal.tenantId,
+      actor: principal.email,
+      action: "scan.forge_validate",
+      subject: scanId,
+      detail: { overallStatus: report.overallStatus },
+    });
+
+    return { report };
   });
 
   app.get("/v1/scans/:id/certificate", async (request, reply) => {

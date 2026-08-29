@@ -442,6 +442,20 @@ export async function listAudit(
   }));
 }
 
+export async function saveArtefact(
+  db: Database,
+  tenantId: string,
+  scanId: string,
+  kind: string,
+  document: unknown,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO artefacts (scan_id, tenant_id, kind, document) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (scan_id, kind) DO UPDATE SET document = EXCLUDED.document`,
+    [scanId, tenantId, kind, JSON.stringify(document)],
+  );
+}
+
 // ----------------------------------------------------------------- helpers
 
 function parseJson<T>(value: unknown, fallback: T): T {

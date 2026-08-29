@@ -1,6 +1,6 @@
 /** Typed access to the platform API. One place that knows about transport. */
 
-import type { Finding, MigrationPlan, ScanRecord, PqcCertificate, WatchtowerDiff } from "@ironbastion/core";
+import type { Finding, MigrationPlan, ScanRecord, PqcCertificate, WatchtowerDiff, ForgeVerificationReport } from "@ironbastion/core";
 import type { CycloneDxBom } from "@ironbastion/cbom";
 
 export interface Posture {
@@ -167,6 +167,26 @@ export const api = {
     }),
   certificate: (id: string) => request<PqcCertificate>(`/v1/scans/${id}/certificate`),
   publicKey: () => request<{ publicKey: string }>("/v1/certificate-public-key"),
-  watchtower: (projectId: string) => request<WatchtowerDiff>(`/v1/projects/${projectId}/watchtower`),
+  watchtower: (projectId: string) => request<WatchtowerResponse>(`/v1/projects/${projectId}/watchtower`),
+  monitorProject: (projectId: string) =>
+    request<{ status: "up-to-date" | "scan-queued" | "no-git-targets"; commitHash: string; scan?: ScanRecord }>(
+      `/v1/projects/${projectId}/monitor`,
+      { method: "POST" }
+    ),
+  forge: (scanId: string) => request<{ report: ForgeVerificationReport | null }>(`/v1/scans/${scanId}/forge`),
+  checkForge: (scanId: string) => request<{ report: ForgeVerificationReport }>(`/v1/scans/${scanId}/forge/check`, { method: "POST" }),
   reportUrl: (id: string) => `/v1/scans/${id}/report`,
 };
+
+export interface WatchtowerHistoryItem {
+  readonly id: string;
+  readonly status: string;
+  readonly startedAt: string;
+  readonly finishedAt?: string;
+  readonly postureScore: number | null;
+  readonly targets: unknown[];
+}
+
+export interface WatchtowerResponse extends WatchtowerDiff {
+  readonly history: WatchtowerHistoryItem[];
+}
