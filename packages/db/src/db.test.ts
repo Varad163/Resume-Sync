@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SCAN_OPTIONS, EMPTY_STATS, type Finding } from "@ironbastion/core";
-import { createEmbedded, migrate, type Database } from "./driver.js";
+import { createEmbedded, migrate, runInTenantTransaction, type Database } from "./driver.js";
 import {
   completeScan,
   createProject,
@@ -201,5 +201,53 @@ describe("audit log", () => {
     const entries = await listAudit(db, acme);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ actor: "eng@acme.test", action: "scan.create" });
+  });
+});
+
+describe("Row Level Security (RLS) tenant isolation", () => {
+  it("restricts read, write, and delete operations of projects to the current tenant session", async () => {
+    // Create restricted role and grant permissions
+    try {
+      await db.query(`CREATE ROLE ironbastion_app`);
+    } catch {
+      // Ignore if exists
+    }
+    await db.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ironbastion_app`);
+
+    // 1. Create projects under acme and globex (using system bypass / superuser)
+    const acmeProj = await createProject(db, { tenantId: acme, name: "acme-payments", targets: [] });
+    const globexProj = await createProject(db, { tenantId: globex, name: "globex-payments", targets: [] });
+
+    // 2. Query within acme tenant context
+    await runInTenantTransaction(db, acme, async (tx) => {
+      await tx.query(`SET LOCAL ROLE ironbastion_app`);
+      // Should find ACME project
+      const projects = await listProjects(tx, acme);
+      expect(projects.some((p) => p.id === acmeProj.id)).toBe(true);
+      // RLS should hide GLOBEX project even if we pass globex parameter to listProjects
+      const globexProjects = await listProjects(tx, globex);
+      expect(globexProjects.some((p) => p.id === globexProj.id)).toBe(false);
+    });
+
+    // 3. Attempt cross-tenant modifications within globex tenant context
+    await runInTenantTransaction(db, globex, async (tx) => {
+      await tx.query(`SET LOCAL ROLE ironbastion_app`);
+      // Trying to update ACME project should affect 0 rows
+      const res = await tx.query(`UPDATE projects SET name = 'tampered' WHERE id = $1`, [acmeProj.id]);
+      expect(res.rowCount).toBe(0);
+
+      // Trying to delete ACME project should affect 0 rows
+      const delRes = await tx.query(`DELETE FROM projects WHERE id = $1`, [acmeProj.id]);
+      expect(delRes.rowCount).toBe(0);
+
+      // Trying to insert a project with tenant_id = ACME should fail RLS WITH CHECK policy
+      await expect(
+        tx.query(`INSERT INTO projects (tenant_id, name, targets) VALUES ($1, $2, $3)`, [
+          acme,
+          "inserted-by-globex",
+          "[]",
+        ])
+      ).rejects.toThrow();
+    });
   });
 });

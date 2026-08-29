@@ -108,4 +108,40 @@ CREATE INDEX IF NOT EXISTS audit_tenant_at_idx ON audit_log (tenant_id, at DESC)
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS monitoring_enabled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS monitoring_interval INTEGER NOT NULL DEFAULT 60;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_monitored_at TIMESTAMPTZ;
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS project_tenant_isolation ON projects;
+CREATE POLICY project_tenant_isolation ON projects FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
+
+ALTER TABLE scans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scans FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS scan_tenant_isolation ON scans;
+CREATE POLICY scan_tenant_isolation ON scans FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
+
+ALTER TABLE findings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE findings FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS finding_tenant_isolation ON findings;
+CREATE POLICY finding_tenant_isolation ON findings FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
+
+ALTER TABLE artefacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE artefacts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS artefact_tenant_isolation ON artefacts;
+CREATE POLICY artefact_tenant_isolation ON artefacts FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
+
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS audit_tenant_isolation ON audit_log;
+CREATE POLICY audit_tenant_isolation ON audit_log FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
 `;
