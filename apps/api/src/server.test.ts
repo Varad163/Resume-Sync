@@ -380,7 +380,8 @@ describe("scans", () => {
       headers: auth(acme),
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: "insufficient-history" });
+    expect(response.json().status).toBe("insufficient-history");
+    expect(response.json().history).toBeDefined();
   });
 
   it("refuses to query watchtower for another tenant's project", async () => {
@@ -391,6 +392,160 @@ describe("scans", () => {
       headers: auth(globex),
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("allows monitor checking and triggers scan on SHA difference", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "payments-git",
+      targets: [
+        {
+          id: "repo_demo",
+          kind: "git-repository",
+          name: "payments",
+          remoteUrl: "/home/hp/Internship/RungtaVenture/IronBastion",
+        },
+      ] as never,
+    });
+
+    // 1. Initial monitor check when there is no scan history - should trigger a scan immediately
+    const res1 = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitor`,
+      headers: auth(acme),
+    });
+    expect(res1.statusCode).toBe(202);
+    expect(res1.json().status).toBe("scan-queued");
+    expect(res1.json().commitHash).toHaveLength(40);
+
+    const scanId = res1.json().scan.id;
+
+    // Simulate scan success and record commitHash
+    await db.query(
+      `UPDATE scans SET status = 'succeeded', finished_at = now(), targets = $1 WHERE id = $2`,
+      [
+        JSON.stringify([
+          {
+            id: "repo_demo",
+            kind: "git-repository",
+            name: "payments",
+            remoteUrl: "/home/hp/Internship/RungtaVenture/IronBastion",
+            commitHash: res1.json().commitHash,
+          },
+        ]),
+        scanId,
+      ],
+    );
+
+    // 2. Monitor checking again with same SHA - should return up-to-date and NOT trigger scan
+    const res2 = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitor`,
+      headers: auth(acme),
+    });
+    expect(res2.statusCode).toBe(200);
+    expect(res2.json().status).toBe("up-to-date");
+    expect(res2.json().commitHash).toBe(res1.json().commitHash);
+
+    // 3. Query watchtower to verify history returns the scan
+    const watchtowerRes = await app.inject({
+      method: "GET",
+      url: `/v1/projects/${project.id}/watchtower`,
+      headers: auth(acme),
+    });
+    expect(watchtowerRes.statusCode).toBe(200);
+    expect(watchtowerRes.json().history).toHaveLength(1);
+    expect(watchtowerRes.json().history[0].id).toBe(scanId);
+
+    // 4. Refuse monitor query from globex (tenant isolation)
+    const globexRes = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitor`,
+      headers: auth(globex),
+    });
+    expect(globexRes.statusCode).toBe(404);
+  });
+});
+
+describe("forge", () => {
+  it("allows querying, uploading, and verifies tenant boundaries", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "forge-project",
+      targets: [{ kind: "tls-endpoint", id: "t1", host: "api.test", port: 443 }] as never,
+    });
+    const scanResponse = await app.inject({
+      method: "POST",
+      url: "/v1/scans",
+      headers: auth(acme),
+      payload: { projectId: project.id },
+    });
+    const { scan } = scanResponse.json();
+
+    const getRes1 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/forge`,
+      headers: auth(acme),
+    });
+    expect(getRes1.statusCode).toBe(200);
+    expect(getRes1.json().report).toBeNull();
+
+    const mockReport = {
+      scanId: scan.id,
+      targetId: "t1",
+      overallStatus: "verified",
+      checks: [
+        {
+          id: "downgrade_resistance",
+          name: "Downgrade Resistance",
+          description: "Verify downgrade rejection",
+          status: "pass",
+          severity: "high",
+          logs: ["Legacy protocol rejected."],
+        },
+      ],
+      traces: [
+        {
+          name: "Init",
+          message: "Starting connection",
+          status: "success",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const postRes1 = await app.inject({
+      method: "POST",
+      url: `/v1/scans/${scan.id}/forge/results`,
+      headers: auth(acme),
+      payload: { report: mockReport },
+    });
+    expect(postRes1.statusCode).toBe(200);
+    expect(postRes1.json().status).toBe("success");
+
+    const getRes2 = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/forge`,
+      headers: auth(acme),
+    });
+    expect(getRes2.statusCode).toBe(200);
+    expect(getRes2.json().report.overallStatus).toBe("verified");
+    expect(getRes2.json().report.checks).toHaveLength(1);
+
+    const globexGetRes = await app.inject({
+      method: "GET",
+      url: `/v1/scans/${scan.id}/forge`,
+      headers: auth(globex),
+    });
+    expect(globexGetRes.statusCode).toBe(404);
+
+    const globexPostRes = await app.inject({
+      method: "POST",
+      url: `/v1/scans/${scan.id}/forge/results`,
+      headers: auth(globex),
+      payload: { report: mockReport },
+    });
+    expect(globexPostRes.statusCode).toBe(404);
   });
 });
 

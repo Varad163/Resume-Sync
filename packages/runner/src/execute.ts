@@ -18,7 +18,7 @@ import {
 } from "@ironbastion/db";
 import { runCampaign, type CampaignResult, type ModelClient } from "@ironbastion/agents";
 import type { ScanRecord, ScanTarget } from "@ironbastion/core";
-import { checkout, redact, type CheckoutResult } from "./checkout.js";
+import { checkout, redact, resolveLocalCommit, type CheckoutResult } from "./checkout.js";
 
 export interface ExecuteOptions {
   readonly db: Database;
@@ -53,7 +53,23 @@ export async function executeScan(options: ExecuteOptions): Promise<CampaignResu
           ...(options.gitToken ? { token: options.gitToken } : {}),
         });
         checkouts.push(result);
-        targets.push({ ...target, localPath: result.path });
+        
+        let commitHash: string | undefined;
+        let commitMessage: string | undefined;
+        try {
+          const info = await resolveLocalCommit(result.path);
+          commitHash = info.sha;
+          commitMessage = info.message;
+        } catch (e) {
+          log(`Warning: failed to resolve commit info: ${(e as Error).message}`);
+        }
+
+        targets.push({
+          ...target,
+          localPath: result.path,
+          ...(commitHash ? { commitHash } : {}),
+          ...(commitMessage ? { commitMessage } : {}),
+        });
       } else {
         targets.push(target);
       }

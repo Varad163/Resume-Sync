@@ -1,5 +1,13 @@
 export { executeScan, type ExecuteOptions } from "./execute.js";
-export { checkout, redact, type CheckoutOptions, type CheckoutResult } from "./checkout.js";
+export { runForgeVerification } from "./forge.js";
+export {
+  checkout,
+  redact,
+  resolveRemoteHead,
+  resolveLocalCommit,
+  type CheckoutOptions,
+  type CheckoutResult,
+} from "./checkout.js";
 export {
   createQueue,
   createInProcessQueue,
