@@ -7,8 +7,18 @@
  * picks it up — so a crashed worker costs time, not a lost scan.
  */
 
-import { createDatabase, migrate } from "@ironbastion/db";
-import { createQueue, executeScan } from "@ironbastion/runner";
+import {
+  createDatabase,
+  migrate,
+  createScan,
+  listScans,
+  recordAudit,
+  listActiveMonitoredProjects,
+  updateProjectLastMonitored,
+  type Database,
+} from "@ironbastion/db";
+import { createQueue, executeScan, resolveRemoteHead, type Queue } from "@ironbastion/runner";
+import { DEFAULT_SCAN_OPTIONS, type GitRepositoryTarget } from "@ironbastion/core";
 import {
   configuredProvider,
   createAwsClient,
@@ -19,6 +29,93 @@ import {
 
 let shuttingDown = false;
 
+async function startMonitoringPoller(db: Database, queue: Queue): Promise<void> {
+  log("starting background monitoring poller");
+  while (!shuttingDown) {
+    try {
+      const activeProjects = await listActiveMonitoredProjects(db);
+      for (const project of activeProjects) {
+        if (shuttingDown) break;
+
+        const lastChecked = project.lastMonitoredAt ? new Date(project.lastMonitoredAt).getTime() : 0;
+        const elapsedMinutes = (Date.now() - lastChecked) / 60000;
+
+        if (elapsedMinutes < project.monitoringInterval) {
+          continue;
+        }
+
+        const gitTargets = (project.targets || []).filter((t) => t.kind === "git-repository") as GitRepositoryTarget[];
+        if (gitTargets.length === 0) {
+          continue;
+        }
+
+        try {
+          const firstTarget = gitTargets[0]!;
+          log(`checking remote head for project: ${project.name} (${firstTarget.remoteUrl})`);
+
+          const remoteSha = await resolveRemoteHead({
+            remoteUrl: firstTarget.remoteUrl!,
+            ref: firstTarget.ref,
+          });
+
+          const scans = await listScans(db, project.tenantId, { projectId: project.id, limit: 10 });
+          const latestScan = scans.find((s) => s.status === "succeeded");
+
+          let shouldRescan = true;
+          if (latestScan) {
+            const latestTarget = latestScan.targets.find((t) => t.id === firstTarget.id);
+            const latestSha = (latestTarget as { commitHash?: string } | undefined)?.commitHash;
+
+            if (latestSha === remoteSha) {
+              shouldRescan = false;
+            }
+          }
+
+          const activeScan = scans.find((s) => (s.status as string) === "running" || s.status === "queued");
+          if (activeScan) {
+            const activeTarget = activeScan.targets.find((t) => t.id === firstTarget.id);
+            const activeSha = (activeTarget as { commitHash?: string } | undefined)?.commitHash;
+            if (activeSha === remoteSha) {
+              shouldRescan = false;
+            }
+          }
+
+          if (shouldRescan) {
+            log(`changes detected for project: ${project.name} (${remoteSha.slice(0, 7)}). queueing scan...`);
+            const scan = await createScan(db, {
+              tenantId: project.tenantId,
+              projectId: project.id,
+              targets: project.targets,
+              options: DEFAULT_SCAN_OPTIONS,
+            });
+
+            await queue.enqueue({ scanId: scan.id, tenantId: project.tenantId });
+            await recordAudit(db, {
+              tenantId: project.tenantId,
+              actor: "system-monitor",
+              action: "scan.trigger_monitor",
+              subject: scan.id,
+              detail: { projectId: project.id, commitHash: remoteSha },
+            });
+          } else {
+            log(`project ${project.name} is up-to-date at commit: ${remoteSha.slice(0, 7)}`);
+          }
+
+          await updateProjectLastMonitored(db, project.id);
+        } catch (err) {
+          log(`error checking project ${project.name}: ${(err as Error).message}`);
+          await updateProjectLastMonitored(db, project.id).catch(() => {});
+        }
+      }
+    } catch (e) {
+      log(`poller cycle error: ${(e as Error).message}`);
+    }
+
+    await sleep(2000);
+  }
+  log("background monitoring poller stopped");
+}
+
 async function main(): Promise<void> {
   const db = await createDatabase();
   await migrate(db);
@@ -27,6 +124,8 @@ async function main(): Promise<void> {
   const client = await modelClient();
 
   log(`worker up: queue ${queue.id}, model ${client?.id ?? "rule-based fallback"}`);
+
+  void startMonitoringPoller(db, queue);
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
@@ -46,7 +145,6 @@ async function main(): Promise<void> {
     }
 
     if (received.length === 0) {
-      // The in-process queue does not block, so do not spin on it.
       if (queue.id === "in-process") await sleep(1000);
       continue;
     }
@@ -54,7 +152,6 @@ async function main(): Promise<void> {
     for (const { message, ack } of received) {
       log(`starting ${message.scanId}`);
       await executeScan({ db, scanId: message.scanId, client, log });
-      // executeScan records its own failures, so the message is done either way.
       await ack();
     }
   }

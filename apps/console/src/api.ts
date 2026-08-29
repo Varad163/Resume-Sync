@@ -15,6 +15,9 @@ export interface Project {
   name: string;
   description: string;
   targets: unknown[];
+  monitoringEnabled?: boolean;
+  monitoringInterval?: number;
+  lastMonitoredAt?: string | null;
   createdAt: string;
 }
 
@@ -175,6 +178,11 @@ export const api = {
     ),
   forge: (scanId: string) => request<{ report: ForgeVerificationReport | null }>(`/v1/scans/${scanId}/forge`),
   checkForge: (scanId: string) => request<{ report: ForgeVerificationReport }>(`/v1/scans/${scanId}/forge/check`, { method: "POST" }),
+  configureMonitoring: (projectId: string, enabled: boolean, interval: number) =>
+    request<{ success: boolean }>(`/v1/projects/${projectId}/monitoring`, {
+      method: "POST",
+      body: JSON.stringify({ enabled, interval }),
+    }),
   reportUrl: (id: string) => `/v1/scans/${id}/report`,
 };
 

@@ -568,3 +568,75 @@ describe("audit", () => {
     expect(otherTenant.json().entries).toEqual([]);
   });
 });
+
+describe("watchtower continuous monitoring", () => {
+  it("allows a tenant to configure project monitoring and enforces tenant isolation", async () => {
+    const projRes = await app.inject({
+      method: "POST",
+      url: "/v1/projects",
+      headers: auth(acme),
+      payload: { name: "monitored-proj", targets: [] },
+    });
+    const project = projRes.json().project;
+
+    const monitorRes = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitoring`,
+      headers: auth(acme),
+      payload: { enabled: true, interval: 30 },
+    });
+    expect(monitorRes.statusCode).toBe(200);
+    expect(monitorRes.json()).toEqual({ success: true });
+
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/v1/projects/${project.id}`,
+      headers: auth(acme),
+    });
+    expect(getRes.json().project.monitoringEnabled).toBe(true);
+    expect(getRes.json().project.monitoringInterval).toBe(30);
+
+    const monitorGlobexRes = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitoring`,
+      headers: auth(globex),
+      payload: { enabled: false, interval: 10 },
+    });
+    expect(monitorGlobexRes.statusCode).toBe(404);
+
+    const invalidRes = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitoring`,
+      headers: auth(acme),
+      payload: { enabled: true, interval: 0 },
+    });
+    expect(invalidRes.statusCode).toBe(400);
+  });
+
+  it("checks database listActiveMonitoredProjects filter correctly", async () => {
+    const projRes = await app.inject({
+      method: "POST",
+      url: "/v1/projects",
+      headers: auth(acme),
+      payload: { name: "active-mon-test", targets: [] },
+    });
+    const project = projRes.json().project;
+
+    const { listActiveMonitoredProjects, getProject, updateProjectMonitoring, updateProjectLastMonitored } = await import("@ironbastion/db");
+
+    let active = await listActiveMonitoredProjects(db);
+    expect(active.some((p) => p.id === project.id)).toBe(false);
+
+    await updateProjectMonitoring(db, acme, project.id, true, 45);
+
+    active = await listActiveMonitoredProjects(db);
+    const found = active.find((p) => p.id === project.id);
+    expect(found).toBeDefined();
+    expect(found?.monitoringEnabled).toBe(true);
+    expect(found?.monitoringInterval).toBe(45);
+
+    await updateProjectLastMonitored(db, project.id);
+    const updated = await getProject(db, acme, project.id);
+    expect(updated?.lastMonitoredAt).not.toBeNull();
+  });
+});
