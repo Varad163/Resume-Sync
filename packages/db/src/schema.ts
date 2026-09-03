@@ -144,4 +144,25 @@ DROP POLICY IF EXISTS audit_tenant_isolation ON audit_log;
 CREATE POLICY audit_tenant_isolation ON audit_log FOR ALL
   USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
   WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
+
+CREATE TABLE IF NOT EXISTS github_installations (
+  id            TEXT PRIMARY KEY,
+  tenant_id     TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  github_installation_id TEXT NOT NULL,
+  account_login TEXT NOT NULL,
+  account_type  TEXT NOT NULL DEFAULT 'User',
+  target_type   TEXT NOT NULL DEFAULT 'all',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, github_installation_id)
+);
+
+CREATE INDEX IF NOT EXISTS github_installations_tenant_idx ON github_installations (tenant_id);
+
+ALTER TABLE github_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE github_installations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS github_installations_tenant_isolation ON github_installations;
+CREATE POLICY github_installations_tenant_isolation ON github_installations FOR ALL
+  USING (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true))
+  WITH CHECK (nullif(current_setting('ironbastion.current_tenant_id', true), '') IS NULL OR tenant_id = current_setting('ironbastion.current_tenant_id', true));
 `;

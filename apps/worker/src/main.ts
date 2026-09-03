@@ -11,6 +11,7 @@ import {
   createDatabase,
   migrate,
   createScan,
+  getGithubInstallation,
   listScans,
   recordAudit,
   listActiveMonitoredProjects,
@@ -18,7 +19,7 @@ import {
   type Database,
 } from "@ironbastion/db";
 import { createQueue, executeScan, resolveRemoteHead, type Queue } from "@ironbastion/runner";
-import { DEFAULT_SCAN_OPTIONS, type GitRepositoryTarget } from "@ironbastion/core";
+import { DEFAULT_SCAN_OPTIONS, getGithubAppConfigFromEnv, getInstallationAccessToken, type GitRepositoryTarget } from "@ironbastion/core";
 import {
   configuredProvider,
   createAwsClient,
@@ -56,10 +57,27 @@ async function startMonitoringPoller(db: Database, queue: Queue): Promise<void> 
           const targetUrl = firstTarget.remoteUrl ?? firstTarget.localPath;
           log(`checking remote head for project: ${project.name} (${targetUrl})`);
 
+          let token: string | undefined;
+          if (firstTarget.provider === "github" || (firstTarget.remoteUrl && firstTarget.remoteUrl.includes("github.com"))) {
+            try {
+              const config = getGithubAppConfigFromEnv();
+              if (config) {
+                const installation = await getGithubInstallation(db, project.tenantId);
+                if (installation) {
+                  const tokenData = await getInstallationAccessToken(config, installation.githubInstallationId);
+                  token = tokenData.token;
+                }
+              }
+            } catch (e) {
+              log(`Warning: failed to resolve GitHub token for poller: ${(e as Error).message}`);
+            }
+          }
+
           const remoteSha = await resolveRemoteHead({
             remoteUrl: firstTarget.remoteUrl,
             localPath: firstTarget.localPath,
             ref: firstTarget.ref,
+            ...(token ? { token } : {}),
           });
 
           const scans = await listScans(db, project.tenantId, { projectId: project.id, limit: 10 });

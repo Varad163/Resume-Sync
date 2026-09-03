@@ -474,7 +474,7 @@ function ruleProvenance(agentId: string, rationale: string): AgentProvenance {
 
 function repoRootOf(targets: readonly ScanTarget[]): string | undefined {
   for (const target of targets) {
-    if (target.kind === "git-repository" && target.localPath) return target.localPath;
+    if ((target.kind === "git-repository" || target.kind === "zip-archive") && target.localPath) return target.localPath;
   }
   return undefined;
 }
@@ -484,9 +484,9 @@ function titleOf(candidates: readonly Candidate[], id: string): string {
 }
 
 function describeTarget(target: ScanTarget): string {
-  return target.kind === "git-repository"
-    ? `${target.name} (repository)`
-    : `${target.host}:${target.port} (TLS endpoint)`;
+  if (target.kind === "git-repository") return `${target.name} (repository)`;
+  if (target.kind === "zip-archive") return `${target.name} (ZIP archive)`;
+  return `${target.host}:${target.port} (TLS endpoint)`;
 }
 
 function planDecisions(submission: PlanSubmission): AgentDecision[] {

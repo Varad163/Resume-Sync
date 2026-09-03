@@ -10,6 +10,10 @@ export interface GitRepositoryTarget {
   readonly localPath?: string;
   readonly remoteUrl?: string;
   readonly ref?: string;
+  readonly provider?: "github" | string;
+  readonly githubRepositoryId?: number;
+  readonly githubOwner?: string;
+  readonly githubRepo?: string;
 }
 
 export interface TlsEndpointTarget {
@@ -20,7 +24,16 @@ export interface TlsEndpointTarget {
   readonly serverName?: string;
 }
 
-export type ScanTarget = GitRepositoryTarget | TlsEndpointTarget;
+export interface ZipArchiveTarget {
+  readonly kind: "zip-archive";
+  readonly id: string;
+  readonly name: string;
+  readonly zipKey?: string;
+  readonly zipFilename?: string;
+  readonly localPath?: string;
+}
+
+export type ScanTarget = GitRepositoryTarget | TlsEndpointTarget | ZipArchiveTarget;
 
 export type ScanPhase = "DISCOVER" | "ANALYZE" | "PLAN" | "REPORT" | "DONE";
 

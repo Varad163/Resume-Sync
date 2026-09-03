@@ -15,3 +15,16 @@ export {
   type Queue,
   type ScanMessage,
 } from "./queue.js";
+export {
+  extractZipSafely,
+  isValidZipHeader,
+  sanitizeZipEntryPath,
+  getUploadZipPath,
+  storeUploadZip,
+  removeUploadZip,
+  MAX_ZIP_UPLOAD_BYTES,
+  MAX_UNCOMPRESSED_BYTES,
+  MAX_ZIP_ENTRY_COUNT,
+  type ZipValidationResult,
+} from "./zip.js";
+

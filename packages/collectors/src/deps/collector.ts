@@ -28,11 +28,11 @@ export const jvmDependencyCollector: Collector = {
   version: VERSION,
 
   supports(target: ScanTarget): boolean {
-    return target.kind === "git-repository" && !!target.localPath;
+    return (target.kind === "git-repository" || target.kind === "zip-archive") && !!target.localPath;
   },
 
   async collect(target: ScanTarget, ctx: CollectorContext): Promise<CollectorOutput> {
-    if (target.kind !== "git-repository" || !target.localPath) return { candidates: [], unitsScanned: 0, notes: [] };
+    if ((target.kind !== "git-repository" && target.kind !== "zip-archive") || !target.localPath) return { candidates: [], unitsScanned: 0, notes: [] };
 
     const root = target.localPath;
     const manifests = (
@@ -72,7 +72,7 @@ export const jvmDependencyCollector: Collector = {
 function toCandidate(input: {
   dependency: DeclaredDependency;
   relative: string;
-  target: Extract<ScanTarget, { kind: "git-repository" }>;
+  target: Extract<ScanTarget, { kind: "git-repository" | "zip-archive" }>;
   ctx: CollectorContext;
 }): Candidate | undefined {
   const { dependency, relative, target, ctx } = input;

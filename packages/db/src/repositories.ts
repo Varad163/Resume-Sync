@@ -53,6 +53,17 @@ export interface Posture {
   readonly counts: Record<string, number>;
 }
 
+export interface GithubInstallation {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly githubInstallationId: string;
+  readonly accountLogin: string;
+  readonly accountType: string;
+  readonly targetType: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 // ------------------------------------------------------------------ tenants
 
 export async function createTenant(db: Database, name: string): Promise<Tenant> {
@@ -511,4 +522,75 @@ function parseJson<T>(value: unknown, fallback: T): T {
 
 function asIso(value: string | Date): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+// ----------------------------------------------------------------- github installations
+
+export async function saveGithubInstallation(
+  db: Database,
+  tenantId: string,
+  data: {
+    githubInstallationId: string;
+    accountLogin: string;
+    accountType?: string;
+    targetType?: string;
+  },
+): Promise<GithubInstallation> {
+  const existing = await getGithubInstallation(db, tenantId);
+  const id = existing?.id ?? newId("ghi");
+  const accountType = data.accountType ?? "User";
+  const targetType = data.targetType ?? "all";
+
+  await db.query(
+    `INSERT INTO github_installations (id, tenant_id, github_installation_id, account_login, account_type, target_type, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (tenant_id, github_installation_id) DO UPDATE SET
+       account_login = EXCLUDED.account_login,
+       account_type = EXCLUDED.account_type,
+       target_type = EXCLUDED.target_type,
+       updated_at = now()`,
+    [id, tenantId, data.githubInstallationId, data.accountLogin, accountType, targetType],
+  );
+
+  const saved = await getGithubInstallation(db, tenantId);
+  return saved!;
+}
+
+export async function getGithubInstallation(
+  db: Database,
+  tenantId: string,
+): Promise<GithubInstallation | null> {
+  const res = await db.query<Record<string, unknown>>(
+    `SELECT * FROM github_installations WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+    [tenantId],
+  );
+  if (res.rows.length === 0) return null;
+  const row = res.rows[0]!;
+  return {
+    id: String(row["id"]),
+    tenantId: String(row["tenant_id"]),
+    githubInstallationId: String(row["github_installation_id"]),
+    accountLogin: String(row["account_login"]),
+    accountType: String(row["account_type"]),
+    targetType: String(row["target_type"]),
+    createdAt: asIso(row["created_at"] as string),
+    updatedAt: asIso(row["updated_at"] as string),
+  };
+}
+
+export async function deleteGithubInstallation(
+  db: Database,
+  tenantId: string,
+  githubInstallationId?: string,
+): Promise<boolean> {
+  let res;
+  if (githubInstallationId) {
+    res = await db.query(`DELETE FROM github_installations WHERE tenant_id = $1 AND github_installation_id = $2`, [
+      tenantId,
+      githubInstallationId,
+    ]);
+  } else {
+    res = await db.query(`DELETE FROM github_installations WHERE tenant_id = $1`, [tenantId]);
+  }
+  return (res.rowCount ?? 0) > 0;
 }

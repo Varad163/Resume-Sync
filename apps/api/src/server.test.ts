@@ -695,3 +695,229 @@ describe("watchtower continuous monitoring", () => {
     expect(updated?.lastMonitoredAt).not.toBeNull();
   });
 });
+
+describe("zip upload scanning", () => {
+  it("rejects unauthenticated upload requests", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/scans/upload",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("enforces tenant boundaries on ZIP uploads", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "acme-zip-project",
+      targets: [],
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/scans/upload`,
+      headers: auth(globex),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("accepts a valid ZIP upload and queues a scan with zip-archive target", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "zip-scan-project",
+      targets: [],
+    });
+
+    const AdmZip = (await import("adm-zip")).default;
+    const zip = new AdmZip();
+    zip.addFile("src/index.js", Buffer.from("console.log('hello');"));
+    const zipBuffer = zip.toBuffer();
+
+    // Construct multipart form payload
+    const boundary = "--------------------------1234567890";
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="project.zip"\r\nContent-Type: application/zip\r\n\r\n`
+      ),
+      zipBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/scans/upload`,
+      headers: {
+        ...auth(acme),
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(202);
+    const scan = res.json().scan;
+    expect(scan).toBeDefined();
+    expect(scan.targets[0].kind).toBe("zip-archive");
+    expect(scan.targets[0].name).toBe("project.zip");
+
+    // Also test form field projectId via /v1/scans/upload
+    const formBody = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="projectId"\r\n\r\n${project.id}\r\n` +
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="project.zip"\r\nContent-Type: application/zip\r\n\r\n`
+      ),
+      zipBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const res2 = await app.inject({
+      method: "POST",
+      url: "/v1/scans/upload",
+      headers: {
+        ...auth(acme),
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: formBody,
+    });
+    expect(res2.statusCode).toBe(202);
+    expect(res2.json().scan).toBeDefined();
+  });
+
+  it("rejects non-ZIP files and Zip Slip archives", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "zip-security-project",
+      targets: [],
+    });
+
+    const boundary = "--------------------------9876543210";
+
+    // 1. Non-zip extension
+    const nonZipBody = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="script.sh"\r\nContent-Type: text/plain\r\n\r\necho evil\r\n--${boundary}--\r\n`
+      ),
+    ]);
+
+    const res1 = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/scans/upload`,
+      headers: {
+        ...auth(acme),
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: nonZipBody,
+    });
+    expect(res1.statusCode).toBe(400);
+
+    // 2. Zip Slip archive
+    const AdmZip = (await import("adm-zip")).default;
+    const dummyName = "DUMMY_PATH_12345";
+    const evilName  = "../etc/evil.file";
+    const slipZip = new AdmZip();
+    slipZip.addFile(dummyName, Buffer.from("echo hacked"));
+    const slipBuffer = slipZip.toBuffer();
+    
+    let pos = 0;
+    const dummyBuf = Buffer.from(dummyName);
+    const evilBuf = Buffer.from(evilName);
+    while ((pos = slipBuffer.indexOf(dummyBuf, pos)) !== -1) {
+      evilBuf.copy(slipBuffer, pos);
+      pos += dummyBuf.length;
+    }
+
+    const slipBody = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="slip.zip"\r\nContent-Type: application/zip\r\n\r\n`
+      ),
+      slipBuffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
+    const res2 = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/scans/upload`,
+      headers: {
+        ...auth(acme),
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: slipBody,
+    });
+    expect(res2.statusCode).toBe(400);
+    expect(res2.json().error).toContain("security validation failed");
+  });
+});
+
+describe("github app integration", () => {
+  it("rejects unauthenticated github integration requests", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/status",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns github app status correctly", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/status",
+      headers: auth(acme),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty("configured");
+    expect(body).toHaveProperty("connected");
+  });
+
+  it("rejects invalid state tokens in callback", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/callback?state=invalid_state_token&installation_id=123",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("Invalid or expired state");
+  });
+
+  it("persists and isolates tenant github installations", async () => {
+    const { saveGithubInstallation } = await import("@ironbastion/db");
+    await saveGithubInstallation(db, acme, {
+      githubInstallationId: "inst_acme_999",
+      accountLogin: "acme-corp",
+      accountType: "Organization",
+    });
+
+    const acmeStatus = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/status",
+      headers: auth(acme),
+    });
+    expect(acmeStatus.statusCode).toBe(200);
+    expect(acmeStatus.json().connected).toBe(true);
+    expect(acmeStatus.json().installation.accountLogin).toBe("acme-corp");
+
+    // Verify tenant isolation (Globex should not see Acme installation)
+    const globexStatus = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/status",
+      headers: auth(globex),
+    });
+    expect(globexStatus.statusCode).toBe(200);
+    expect(globexStatus.json().connected).toBe(false);
+    expect(globexStatus.json().installation).toBeNull();
+  });
+
+  it("allows tenant to disconnect github installation", async () => {
+    const delRes = await app.inject({
+      method: "DELETE",
+      url: "/v1/integrations/github",
+      headers: auth(acme),
+    });
+    expect(delRes.statusCode).toBe(200);
+    expect(delRes.json().success).toBe(true);
+
+    const statusRes = await app.inject({
+      method: "GET",
+      url: "/v1/integrations/github/status",
+      headers: auth(acme),
+    });
+    expect(statusRes.json().connected).toBe(false);
+  });
+});
