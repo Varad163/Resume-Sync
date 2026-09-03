@@ -8,7 +8,9 @@
  */
 
 import { useState } from "react";
+import { clearToken, currentToken } from "./api.js";
 import { Activity } from "./pages/AuditPage.js";
+import { LoginPage } from "./pages/LoginPage.js";
 import { Overview } from "./pages/OverviewPage.js";
 import { ScanView } from "./pages/ScanDetailPage.js";
 
@@ -16,6 +18,21 @@ type View = { name: "overview" } | { name: "scan"; id: string } | { name: "audit
 
 export default function App() {
   const [view, setView] = useState<View>({ name: "overview" });
+  const [token, setAuthToken] = useState<string>(currentToken());
+
+  const handleLogout = () => {
+    clearToken();
+    setAuthToken("");
+    setView({ name: "overview" });
+  };
+
+  const handleLoginSuccess = () => {
+    setAuthToken(currentToken());
+  };
+
+  if (!token) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="shell">
@@ -48,6 +65,28 @@ export default function App() {
           <div className="label">Console</div>
           <div className="mono" style={{ fontSize: 11, color: "var(--tick)", marginTop: 6 }}>
             v0.1.0
+          </div>
+
+          <div style={{ marginTop: 12, borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Session: <span style={{ color: "var(--quantum)" }}>Active</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--critical)",
+                fontSize: 11,
+                padding: 0,
+                marginTop: 4,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Clear Session / Logout
+            </button>
           </div>
         </div>
       </aside>

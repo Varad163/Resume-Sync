@@ -91,21 +91,43 @@ export interface AuditEntry {
 }
 
 const TOKEN_KEY = "ironbastion.token";
+const LOGOUT_FLAG = "ironbastion.logged_out";
 
 export function currentToken(): string {
   try {
-    return localStorage.getItem(TOKEN_KEY) ?? "dev.tnt_demo.demo@ironbastion.ai";
+    if (localStorage.getItem(LOGOUT_FLAG) === "true") {
+      return "";
+    }
+    const stored = localStorage.getItem(TOKEN_KEY);
+    if (stored !== null) return stored;
+    if (
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    ) {
+      return "dev.tnt_demo.demo@ironbastion.ai";
+    }
+    return "";
   } catch {
-    return "dev.tnt_demo.demo@ironbastion.ai";
+    return "";
   }
 }
 
-export function setToken(token: string): void {
+export function setToken(token: string | null): void {
   try {
-    localStorage.setItem(TOKEN_KEY, token);
+    if (token && token.trim().length > 0) {
+      localStorage.setItem(TOKEN_KEY, token.trim());
+      localStorage.removeItem(LOGOUT_FLAG);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.setItem(LOGOUT_FLAG, "true");
+    }
   } catch {
-    /* a viewer with storage disabled still gets the default token */
+    /* storage disabled */
   }
+}
+
+export function clearToken(): void {
+  setToken(null);
 }
 
 export class ApiError extends Error {
@@ -116,16 +138,24 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = currentToken();
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  if (token && !headers["authorization"]) {
+    headers["authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(path, {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${currentToken()}`,
-      ...(init.headers ?? {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+    }
     let message = `${response.status} ${response.statusText}`;
     try {
       const body = (await response.json()) as { message?: string; error?: string };
