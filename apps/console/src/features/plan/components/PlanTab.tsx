@@ -23,10 +23,15 @@ export function Plan({
   const currentPlan = customPlan ?? plan;
 
   useEffect(() => {
-    if (currentPlan) {
-      setLocalPlan(JSON.parse(JSON.stringify(currentPlan)));
+    if (editing) {
+      setLocalPlan((prev) => {
+        if (prev) return prev;
+        return currentPlan ? JSON.parse(JSON.stringify(currentPlan)) : null;
+      });
+    } else {
+      setLocalPlan(null);
     }
-  }, [currentPlan, editing]);
+  }, [editing, currentPlan]);
 
   if (!plan) return <Empty title="No plan yet"><p>The migration plan is produced after findings are scored.</p></Empty>;
 
@@ -34,13 +39,15 @@ export function Plan({
   if (!displayPlan) return null;
 
   const handleMoveAction = (actionId: string, targetWaveId: string) => {
-    if (!localPlan) return;
-    try {
-      const nextPlan = moveMigrationAction(localPlan, actionId, targetWaveId);
-      setLocalPlan(nextPlan);
-    } catch (e) {
-      console.error(e);
-    }
+    setLocalPlan((prev) => {
+      if (!prev) return null;
+      try {
+        return moveMigrationAction(prev, actionId, targetWaveId);
+      } catch (e) {
+        console.error(e);
+        return prev;
+      }
+    });
   };
 
   const handleSave = async () => {
