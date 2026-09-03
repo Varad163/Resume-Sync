@@ -8,4 +8,5 @@ export * from "./certify.js";
 export * from "./watchtower.js";
 export * from "./migration-simulator.js";
 export * from "./forge-types.js";
+export * from "./github.js";
 

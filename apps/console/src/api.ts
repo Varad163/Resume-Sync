@@ -203,6 +203,16 @@ async function requestText(path: string, init: RequestInit = {}): Promise<string
 export const api = {
   health: () => request<{ status: string; auth: string; queue: string }>("/health"),
   projects: () => request<{ projects: Project[] }>("/v1/projects"),
+  createProject: (name: string, targets: unknown[]) =>
+    request<{ project: Project }>("/v1/projects", {
+      method: "POST",
+      body: JSON.stringify({ name, targets }),
+    }),
+  updateProject: (id: string, name: string, targets: unknown[]) =>
+    request<{ project: Project }>(`/v1/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, targets }),
+    }),
   scans: (projectId?: string) =>
     request<{ scans: (ScanRecord & { posture?: Posture })[] }>(
       `/v1/scans${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
@@ -229,6 +239,41 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ projectId }),
     }),
+  uploadZipScan: async (projectId: string, file: File): Promise<{ scan: ScanRecord }> => {
+    const formData = new FormData();
+    formData.append("projectId", projectId);
+    formData.append("file", file);
+
+    const token = currentToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/v1/projects/${encodeURIComponent(projectId)}/scans/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearToken();
+      }
+      let message = `${response.status} ${response.statusText}`;
+      try {
+        const body = (await response.json()) as { message?: string; error?: string; detail?: string };
+        message = body.detail
+          ? `${body.error ?? "Upload error"}: ${body.detail}`
+          : body.message ?? body.error ?? message;
+      } catch {
+        /* non-JSON error */
+      }
+      throw new ApiError(response.status, message);
+    }
+
+    return await response.json();
+  },
   certificate: (id: string) => request<PqcCertificate>(`/v1/scans/${id}/certificate`),
   publicKey: () => request<{ publicKey: string }>("/v1/certificate-public-key"),
   watchtower: (projectId: string) => request<WatchtowerResponse>(`/v1/projects/${projectId}/watchtower`),
@@ -246,7 +291,43 @@ export const api = {
     }),
   reportUrl: (id: string) => `/v1/scans/${id}/report`,
   reportHtml: (id: string) => requestText(`/v1/scans/${id}/report`),
+
+  // GitHub App Integration
+  getGithubStatus: () => request<GithubStatusResponse>("/v1/integrations/github/status"),
+  connectGithub: () => request<{ configured: boolean; url: string }>("/v1/integrations/github/connect"),
+  disconnectGithub: () => request<{ success: boolean }>("/v1/integrations/github", { method: "DELETE" }),
+  getGithubRepositories: () => request<{ repositories: GithubRepository[] }>("/v1/integrations/github/repositories"),
+  getGithubBranches: (owner: string, repo: string) =>
+    request<{ branches: GithubBranch[] }>(`/v1/integrations/github/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`),
 };
+
+export interface GithubStatusResponse {
+  readonly configured: boolean;
+  readonly appName: string | null;
+  readonly connected: boolean;
+  readonly installation: {
+    readonly githubInstallationId: string;
+    readonly accountLogin: string;
+    readonly accountType: string;
+  } | null;
+}
+
+export interface GithubRepository {
+  readonly id: number;
+  readonly name: string;
+  readonly fullName: string;
+  readonly owner: string;
+  readonly defaultBranch: string;
+  readonly private: boolean;
+  readonly cloneUrl: string;
+  readonly htmlUrl: string;
+}
+
+export interface GithubBranch {
+  readonly name: string;
+  readonly commitSha: string;
+  readonly isDefault: boolean;
+}
 
 export interface WatchtowerHistoryItem {
   readonly id: string;

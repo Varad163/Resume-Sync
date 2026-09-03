@@ -41,11 +41,11 @@ export const jvmSourceCollector: Collector = {
   version: VERSION,
 
   supports(target: ScanTarget): boolean {
-    return target.kind === "git-repository" && !!target.localPath;
+    return (target.kind === "git-repository" || target.kind === "zip-archive") && !!target.localPath;
   },
 
   async collect(target: ScanTarget, ctx: CollectorContext): Promise<CollectorOutput> {
-    if (target.kind !== "git-repository" || !target.localPath) {
+    if ((target.kind !== "git-repository" && target.kind !== "zip-archive") || !target.localPath) {
       return { candidates: [], unitsScanned: 0, notes: ["target is not a checked-out repository"] };
     }
 
@@ -97,7 +97,7 @@ function toCandidate(input: {
   detection: JvmDetection;
   relative: string;
   source: string;
-  target: Extract<ScanTarget, { kind: "git-repository" }>;
+  target: Extract<ScanTarget, { kind: "git-repository" | "zip-archive" }>;
   ctx: CollectorContext;
 }): Candidate {
   const { detection, relative, source, target, ctx } = input;

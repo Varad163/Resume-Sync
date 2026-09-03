@@ -10,6 +10,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
+import multipart from "@fastify/multipart";
 import { generateCertificateKeys } from "@ironbastion/core";
 import type { Database } from "@ironbastion/db";
 import type { Queue } from "@ironbastion/runner";
@@ -17,6 +18,7 @@ import { AuthError, type Authenticator, type Principal } from "./auth.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerCertifyRoutes } from "./routes/certify.js";
 import { registerForgeRoutes } from "./routes/forge.js";
+import { registerGithubIntegrationRoutes } from "./routes/github.js";
 import { registerMigrationRoutes } from "./routes/migration.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerScanRoutes } from "./routes/scans.js";
@@ -45,6 +47,12 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     credentials: true,
   });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
+  await app.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+      files: 1,
+    },
+  });
 
   app.get("/health", async () => ({
     status: "ok",
@@ -63,6 +71,7 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (
       rawPath === "/health" ||
       rawPath === "/v1/certificate-public-key" ||
+      rawPath === "/v1/integrations/github/callback" ||
       request.method === "OPTIONS"
     ) {
       return;
@@ -83,6 +92,7 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
   await registerCertifyRoutes(app, deps, privateKey);
   await registerForgeRoutes(app, deps);
   await registerAuditRoutes(app, deps);
+  await registerGithubIntegrationRoutes(app, deps);
 
   app.setErrorHandler(async (error: Error & { statusCode?: number }, _request, reply) => {
     const status = error.statusCode ?? 500;

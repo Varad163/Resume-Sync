@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { computeWatchtowerDiff, DEFAULT_SCAN_OPTIONS, type GitRepositoryTarget } from "@ironbastion/core";
+import { computeWatchtowerDiff, DEFAULT_SCAN_OPTIONS, getGithubAppConfigFromEnv, getInstallationAccessToken, type GitRepositoryTarget } from "@ironbastion/core";
 import {
   createScan,
+  getGithubInstallation,
   getProject,
   listFindings,
   listScans,
@@ -95,11 +96,29 @@ export async function registerWatchtowerRoutes(app: FastifyInstance, deps: Serve
 
     let remoteSha: string;
     const firstTarget = gitTargets[0]!;
+    let token: string | undefined;
+
+    if (firstTarget.provider === "github" || (firstTarget.remoteUrl && firstTarget.remoteUrl.includes("github.com"))) {
+      try {
+        const config = getGithubAppConfigFromEnv();
+        if (config) {
+          const installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
+          if (installation) {
+            const tokenData = await getInstallationAccessToken(config, installation.githubInstallationId);
+            token = tokenData.token;
+          }
+        }
+      } catch {
+        // Fallback to unauthenticated ls-remote
+      }
+    }
+
     try {
       remoteSha = await resolveRemoteHead({
         remoteUrl: firstTarget.remoteUrl,
         localPath: firstTarget.localPath,
         ref: firstTarget.ref,
+        ...(token ? { token } : {}),
       });
     } catch {
       return reply.code(400).send({

@@ -37,11 +37,11 @@ export const pypiDependencyCollector: Collector = {
   version: VERSION,
 
   supports(target: ScanTarget): boolean {
-    return target.kind === "git-repository" && !!target.localPath;
+    return (target.kind === "git-repository" || target.kind === "zip-archive") && !!target.localPath;
   },
 
   async collect(target: ScanTarget, ctx: CollectorContext): Promise<CollectorOutput> {
-    if (target.kind !== "git-repository" || !target.localPath) {
+    if ((target.kind !== "git-repository" && target.kind !== "zip-archive") || !target.localPath) {
       return { candidates: [], unitsScanned: 0, notes: [] };
     }
 
@@ -193,7 +193,7 @@ function toCandidate(input: {
   line: number;
   relative: string;
   coordinate: string;
-  target: Extract<ScanTarget, { kind: "git-repository" }>;
+  target: Extract<ScanTarget, { kind: "git-repository" | "zip-archive" }>;
   ctx: CollectorContext;
 }): Candidate | undefined {
   const { name, version, scope, line, relative, coordinate, target, ctx } = input;
