@@ -169,6 +169,37 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function requestText(path: string, init: RequestInit = {}): Promise<string> {
+  const token = currentToken();
+  const headers: Record<string, string> = {
+    ...((init.headers as Record<string, string>) ?? {}),
+  };
+  if (token && !headers["authorization"]) {
+    headers["authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(path, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+    }
+    let message = `${response.status} ${response.statusText}`;
+    try {
+      const body = (await response.json()) as { message?: string; error?: string };
+      message = body.message ?? body.error ?? message;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  return await response.text();
+}
+
 export const api = {
   health: () => request<{ status: string; auth: string; queue: string }>("/health"),
   projects: () => request<{ projects: Project[] }>("/v1/projects"),
@@ -214,6 +245,7 @@ export const api = {
       body: JSON.stringify({ enabled, interval }),
     }),
   reportUrl: (id: string) => `/v1/scans/${id}/report`,
+  reportHtml: (id: string) => requestText(`/v1/scans/${id}/report`),
 };
 
 export interface WatchtowerHistoryItem {

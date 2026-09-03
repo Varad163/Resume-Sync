@@ -5,6 +5,7 @@ import type { Finding, ForgeVerificationReport, MigrationPlan } from "@ironbasti
 import { AgentsView } from "../agents.js";
 import {
   api,
+  ApiError,
   type AgentTrace,
   type CollectorRun,
   type ScanDetail,
@@ -80,6 +81,47 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
     };
   }, [id]);
 
+  const handleDownloadCbom = async () => {
+    try {
+      const cbomData = cbom ?? (await api.cbom(id));
+      const jsonStr = JSON.stringify(cbomData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ironbastion-${id}-cbom.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        setError("Session expired or unauthorized. Please log in again.");
+      } else if (cause instanceof ApiError && cause.status === 404) {
+        setError("No CBOM available for this scan.");
+      } else {
+        setError((cause as Error).message);
+      }
+    }
+  };
+
+  const handleOpenReport = async () => {
+    try {
+      const html = await api.reportHtml(id);
+      const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        setError("Session expired or unauthorized. Please log in again.");
+      } else if (cause instanceof ApiError && cause.status === 404) {
+        setError("Report not found for this scan.");
+      } else {
+        setError((cause as Error).message);
+      }
+    }
+  };
+
   if (error) {
     return (
       <div className="banner">
@@ -110,12 +152,12 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
         {scan.status === "succeeded" ? (
           <div style={{ display: "flex", gap: 8 }}>
-            <a className="btn ghost" href={api.reportUrl(scan.id)} target="_blank" rel="noreferrer">
+            <button className="btn ghost" type="button" onClick={() => void handleOpenReport()}>
               Report
-            </a>
-            <a className="btn" href={`/v1/scans/${scan.id}/cbom`} target="_blank" rel="noreferrer">
+            </button>
+            <button className="btn" type="button" onClick={() => void handleDownloadCbom()}>
               Download CBOM
-            </a>
+            </button>
             <button className="btn primary" type="button" onClick={() => setCertifying(true)}>
               Certify Scan
             </button>
