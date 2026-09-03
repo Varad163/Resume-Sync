@@ -1,7 +1,7 @@
 /**
  * Authentication.
  *
- * Production verifies a Cognito access token against the pool's JWKS and takes
+ * Production verifies a Cognito access or ID token against the pool's JWKS and takes
  * the tenant from a custom claim. Local development uses a bearer token of the
  * form `dev.<tenantId>.<email>`, which is only ever accepted when
  * IRONBASTION_AUTH is explicitly set to `dev` — it is not a fallback, because a
@@ -29,7 +29,10 @@ export interface Authenticator {
   verify(authorizationHeader: string | undefined): Promise<Principal>;
 }
 
-export function createAuthenticator(env: NodeJS.ProcessEnv = process.env): Authenticator {
+export function createAuthenticator(
+  env: NodeJS.ProcessEnv = process.env,
+  options?: { jwks?: Parameters<typeof jwtVerify>[1] },
+): Authenticator {
   if (env["IRONBASTION_AUTH"] === "dev") return devAuthenticator();
 
   const userPoolId = env["COGNITO_USER_POOL_ID"];
@@ -42,7 +45,8 @@ export function createAuthenticator(env: NodeJS.ProcessEnv = process.env): Authe
   }
 
   const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
-  const jwks = createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
+  const keySet =
+    options?.jwks ?? createRemoteJWKSet(new URL(`${issuer}/.well-known/jwks.json`));
 
   return {
     mode: "cognito",
@@ -50,16 +54,30 @@ export function createAuthenticator(env: NodeJS.ProcessEnv = process.env): Authe
       const token = bearer(header);
       let payload: JWTPayload;
       try {
-        ({ payload } = await jwtVerify(token, jwks, {
+        ({ payload } = await jwtVerify(token, keySet, {
           issuer,
-          ...(clientId ? { audience: clientId } : {}),
         }));
       } catch (error) {
         throw new AuthError(`token rejected: ${(error as Error).message}`);
       }
 
+      const tokenUse = payload["token_use"];
+      if (tokenUse && tokenUse !== "id" && tokenUse !== "access") {
+        throw new AuthError("token rejected: invalid token_use claim");
+      }
+
+      if (clientId) {
+        const audMatch =
+          payload.aud === clientId ||
+          (Array.isArray(payload.aud) && payload.aud.includes(clientId));
+        const clientMatch = payload["client_id"] === clientId;
+        if (!audMatch && !clientMatch) {
+          throw new AuthError("token rejected: audience or client_id mismatch");
+        }
+      }
+
       const tenantId = String(payload["custom:tenant_id"] ?? "");
-      const email = String(payload["email"] ?? "");
+      const email = String(payload["email"] ?? payload["username"] ?? payload["cognito:username"] ?? "");
       if (!tenantId) throw new AuthError("token carries no tenant");
 
       return {
