@@ -465,6 +465,61 @@ describe("scans", () => {
     });
     expect(globexRes.statusCode).toBe(404);
   });
+
+  it("handles localPath git repository monitoring and updates last_monitored_at", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "local-git-project",
+      targets: [
+        {
+          id: "repo_local",
+          kind: "git-repository",
+          name: "local-payments",
+          localPath: "fixtures/java-payments",
+        },
+      ] as never,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitor`,
+      headers: auth(acme),
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json().status).toBe("scan-queued");
+    expect(res.json().commitHash).toMatch(/^[0-9a-f]{40}$/i);
+
+    // Verify last_monitored_at was updated in project list
+    const projRes = await app.inject({
+      method: "GET",
+      url: "/v1/projects",
+      headers: auth(acme),
+    });
+    const found = projRes.json().projects.find((p: { id: string }) => p.id === project.id);
+    expect(found.lastMonitoredAt).toBeTruthy();
+  });
+
+  it("returns no-git-targets when project has no valid remote or local git path", async () => {
+    const project = await createProject(db, {
+      tenantId: acme,
+      name: "no-git-project",
+      targets: [
+        {
+          id: "repo_invalid",
+          kind: "git-repository",
+          name: "invalid-target",
+        },
+      ] as never,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/monitor`,
+      headers: auth(acme),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("no-git-targets");
+  });
 });
 
 describe("forge", () => {

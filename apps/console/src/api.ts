@@ -140,7 +140,7 @@ export class ApiError extends Error {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = currentToken();
   const headers: Record<string, string> = {
-    "content-type": "application/json",
+    ...(init.body ? { "content-type": "application/json" } : {}),
     ...((init.headers as Record<string, string>) ?? {}),
   };
   if (token && !headers["authorization"]) {

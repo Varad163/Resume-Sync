@@ -8,3 +8,4 @@ coverage/
 .pgdata/
 cdk.out/
 .DS_Store
+fixtures/java-payments/.git

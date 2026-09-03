@@ -140,11 +140,23 @@ function capture(
 }
 
 export async function resolveRemoteHead(options: {
-  remoteUrl: string;
+  remoteUrl?: string;
+  localPath?: string;
   ref?: string;
   token?: string;
   timeoutMs?: number;
 }): Promise<string> {
+  const targetUrl = options.remoteUrl || options.localPath;
+  if (!targetUrl) {
+    throw new Error("Git repository target has no configured remote or local path");
+  }
+
+  // If remoteUrl is missing but localPath is provided, resolve local commit SHA
+  if (!options.remoteUrl && options.localPath) {
+    const { sha } = await resolveLocalCommit(options.localPath);
+    return sha;
+  }
+
   const root = await mkdtemp(path.join(tmpdir(), "ironbastion-lsremote-"));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -162,13 +174,13 @@ export async function resolveRemoteHead(options: {
   }
 
   const refTarget = options.ref ?? "HEAD";
-  const args = ["ls-remote", options.remoteUrl, refTarget];
+  const args = ["ls-remote", targetUrl, refTarget];
 
   try {
     const output = await capture("git", args, env, options.timeoutMs ?? 60_000);
     const lines = output.split("\n").filter((l) => l.trim().length > 0);
     if (lines.length === 0) {
-      throw new Error(`ls-remote returned no references for ${redact(options.remoteUrl)}`);
+      throw new Error(`ls-remote returned no references for ${redact(targetUrl)}`);
     }
     const parts = lines[0]!.split(/\s+/);
     const sha = parts[0]!;

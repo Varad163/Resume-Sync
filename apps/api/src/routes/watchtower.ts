@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { computeWatchtowerDiff, DEFAULT_SCAN_OPTIONS } from "@ironbastion/core";
+import { computeWatchtowerDiff, DEFAULT_SCAN_OPTIONS, type GitRepositoryTarget } from "@ironbastion/core";
 import {
   createScan,
   getProject,
@@ -7,6 +7,7 @@ import {
   listScans,
   recordAudit,
   runInTenantTransaction,
+  updateProjectLastMonitored,
   type Database,
 } from "@ironbastion/db";
 import { resolveRemoteHead } from "@ironbastion/runner";
@@ -85,7 +86,9 @@ export async function registerWatchtowerRoutes(app: FastifyInstance, deps: Serve
     const project = await runTx(request, (tx) => getProject(tx, principal.tenantId, projectId));
     if (!project) return reply.code(404).send({ error: "project not found" });
 
-    const gitTargets = (project.targets || []).filter((t) => t.kind === "git-repository");
+    const gitTargets = (project.targets || []).filter(
+      (t): t is GitRepositoryTarget => t.kind === "git-repository" && Boolean(t.remoteUrl || t.localPath),
+    );
     if (gitTargets.length === 0) {
       return { status: "no-git-targets" };
     }
@@ -94,7 +97,8 @@ export async function registerWatchtowerRoutes(app: FastifyInstance, deps: Serve
     const firstTarget = gitTargets[0]!;
     try {
       remoteSha = await resolveRemoteHead({
-        remoteUrl: firstTarget.remoteUrl!,
+        remoteUrl: firstTarget.remoteUrl,
+        localPath: firstTarget.localPath,
         ref: firstTarget.ref,
       });
     } catch {
@@ -105,6 +109,8 @@ export async function registerWatchtowerRoutes(app: FastifyInstance, deps: Serve
     }
 
     return runTx(request, async (tx) => {
+      await updateProjectLastMonitored(tx, projectId);
+
       const scans = await listScans(tx, principal.tenantId, { projectId, limit: 10 });
       const latestScan = scans.find((s) => s.status === "succeeded");
 

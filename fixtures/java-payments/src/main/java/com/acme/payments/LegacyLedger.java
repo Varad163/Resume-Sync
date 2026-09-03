@@ -29,4 +29,9 @@ public class LegacyLedger {
     random.nextBytes(out);
     return out;
   }
+
+  public String extraDigest(byte[] b) throws Exception {
+    MessageDigest md = MessageDigest.getInstance("SHA-256");
+    return new String(md.digest(b));
+  }
 }

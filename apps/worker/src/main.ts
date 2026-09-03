@@ -44,17 +44,21 @@ async function startMonitoringPoller(db: Database, queue: Queue): Promise<void> 
           continue;
         }
 
-        const gitTargets = (project.targets || []).filter((t) => t.kind === "git-repository") as GitRepositoryTarget[];
+        const gitTargets = (project.targets || []).filter(
+          (t) => t.kind === "git-repository" && (t.remoteUrl || t.localPath),
+        ) as GitRepositoryTarget[];
         if (gitTargets.length === 0) {
           continue;
         }
 
         try {
           const firstTarget = gitTargets[0]!;
-          log(`checking remote head for project: ${project.name} (${firstTarget.remoteUrl})`);
+          const targetUrl = firstTarget.remoteUrl ?? firstTarget.localPath;
+          log(`checking remote head for project: ${project.name} (${targetUrl})`);
 
           const remoteSha = await resolveRemoteHead({
-            remoteUrl: firstTarget.remoteUrl!,
+            remoteUrl: firstTarget.remoteUrl,
+            localPath: firstTarget.localPath,
             ref: firstTarget.ref,
           });
 
