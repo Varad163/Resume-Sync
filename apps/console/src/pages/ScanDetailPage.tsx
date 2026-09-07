@@ -13,12 +13,14 @@ import {
 } from "../api.js";
 import { Empty, FindingsTable, PhaseTrail, Readout, Spectrum } from "../components.js";
 import { CertifyModal } from "../features/certify/components/CertifyModal.js";
+import { CertifyView } from "../features/certify/components/CertifyView.js";
+import { CbomView } from "../features/cbom/components/CbomView.js";
 import { Forge } from "../features/forge/components/ForgeTab.js";
 import { Inventory } from "../features/inventory/components/InventoryTab.js";
 import { Plan } from "../features/plan/components/PlanTab.js";
 import { Watchtower } from "../features/watchtower/components/WatchtowerTab.js";
 
-type Tab = "findings" | "agents" | "inventory" | "plan" | "watchtower" | "forge";
+type Tab = "findings" | "agents" | "inventory" | "plan" | "watchtower" | "forge" | "certify" | "cbom";
 
 const SEVERITY_TONE: Record<string, string> = {
   critical: "var(--critical)",
@@ -28,7 +30,7 @@ const SEVERITY_TONE: Record<string, string> = {
   informational: "var(--dim)",
 };
 
-export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
+export function ScanView({ id, initialTab = "findings", onBack }: { id: string; initialTab?: Tab; onBack: () => void }) {
   const [detail, setDetail] = useState<ScanDetail>();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [cbom, setCbom] = useState<CycloneDxBom>();
@@ -36,12 +38,16 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
   const [customPlan, setCustomPlan] = useState<MigrationPlan | null>(null);
   const [traces, setTraces] = useState<AgentTrace[]>([]);
   const [collectorRuns, setCollectorRuns] = useState<CollectorRun[]>([]);
-  const [tab, setTab] = useState<Tab>("findings");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState<string>();
   const [certifying, setCertifying] = useState(false);
   const [watchtowerDiff, setWatchtowerDiff] = useState<WatchtowerResponse | null>(null);
   const [forgeReport, setForgeReport] = useState<ForgeVerificationReport | null>(null);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     let live = true;
@@ -151,6 +157,8 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
     { key: "inventory", label: "Inventory", count: totalAssetsCount },
     { key: "plan", label: "Plan" },
     { key: "watchtower", label: "Watchtower" },
+    { key: "certify", label: "Certify" },
+    { key: "cbom", label: "CBOM", count: totalAssetsCount },
   ];
 
   return (
@@ -310,6 +318,12 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
           report={forgeReport}
           onReportChange={setForgeReport}
         />
+      ) : null}
+      {tab === "certify" && detail ? (
+        <CertifyView scanDetail={detail} findings={findings} cbom={cbom} />
+      ) : null}
+      {tab === "cbom" ? (
+        <CbomView scanId={scan.id} cbom={cbom} findings={findings} />
       ) : null}
 
       {certifying && <CertifyModal scanId={scan.id} onClose={() => setCertifying(false)} />}

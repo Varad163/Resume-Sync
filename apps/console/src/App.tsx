@@ -229,6 +229,36 @@ export default function App() {
 
           {view.name === "audit" && <Activity />}
 
+          {view.name === "certify" &&
+            (scans.length > 0 ? (
+              <ScanView
+                id={(scans.find((s) => s.status === "succeeded") || scans[0])!.id}
+                initialTab="certify"
+                onBack={() => navigate({ name: "scans" })}
+              />
+            ) : (
+              <ScansPage
+                scans={scans}
+                onOpenAddRepo={() => setIsAddRepoOpen(true)}
+                onSelectScan={(id) => navigate({ name: "scan", id })}
+              />
+            ))}
+
+          {view.name === "cbom" &&
+            (scans.length > 0 ? (
+              <ScanView
+                id={(scans.find((s) => s.status === "succeeded") || scans[0])!.id}
+                initialTab="cbom"
+                onBack={() => navigate({ name: "scans" })}
+              />
+            ) : (
+              <ScansPage
+                scans={scans}
+                onOpenAddRepo={() => setIsAddRepoOpen(true)}
+                onSelectScan={(id) => navigate({ name: "scan", id })}
+              />
+            ))}
+
           {view.name === "scan" && (
             <ScanView id={view.id} onBack={() => navigate({ name: "scans" })} />
           )}

@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { api, currentToken, type Project, type GithubStatusResponse } from "../api.js";
+import { useCallback, useEffect, useState } from "react";
+import {
+  api,
+  currentToken,
+  type Project,
+  type GithubStatusResponse,
+  type GithubRepository,
+} from "../api.js";
 
 interface SettingsPageProps {
   projects: Project[];
@@ -24,6 +30,8 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
 
   // GitHub state
   const [githubStatus, setGithubStatus] = useState<GithubStatusResponse | null>(null);
+  const [githubRepos, setGithubRepos] = useState<GithubRepository[]>([]);
+  const [connectingGithub, setConnectingGithub] = useState(false);
 
   // System health state
   const [health, setHealth] = useState<{ status: string; auth: string; queue: string } | null>(null);
@@ -35,10 +43,33 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
     }
   }, [project]);
 
-  useEffect(() => {
-    void api.getGithubStatus().then(setGithubStatus).catch(() => null);
-    void api.health().then(setHealth).catch(() => null);
+  const loadGithubInfo = useCallback(async () => {
+    try {
+      const status = await api.getGithubStatus();
+      setGithubStatus(status);
+      if (status.connected) {
+        const { repositories } = await api.getGithubRepositories().catch(() => ({ repositories: [] }));
+        setGithubRepos(repositories);
+      } else {
+        setGithubRepos([]);
+      }
+    } catch (e) {
+      console.warn("Settings GitHub status load failed:", e);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadGithubInfo();
+    void api.health().then(setHealth).catch(() => null);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "IRONBASTION_GITHUB_CONNECTED") {
+        void loadGithubInfo();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [loadGithubInfo]);
 
   const handleSaveWatchtower = async () => {
     if (!project) return;
@@ -73,7 +104,33 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
     }
   };
 
+  const handleConnectGithub = async () => {
+    setConnectingGithub(true);
+    try {
+      const { url } = await api.connectGithub();
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.innerWidth - width) / 2;
+      const top = window.screenY + (window.innerHeight - height) / 2;
+      window.open(url, "Connect GitHub", `width=${width},height=${height},left=${left},top=${top}`);
+    } catch (cause) {
+      setWatchtowerMsg({ type: "error", text: (cause as Error).message });
+    } finally {
+      setConnectingGithub(false);
+    }
+  };
+
+  const handleDisconnectGithub = async () => {
+    try {
+      await api.disconnectGithub();
+      void loadGithubInfo();
+    } catch (cause) {
+      setWatchtowerMsg({ type: "error", text: (cause as Error).message });
+    }
+  };
+
   const token = currentToken();
+  const sessionIdentity = token ? token.replace(/^dev\.[^.]+\./, "") : "eng@test";
 
   return (
     <div className="page-container">
@@ -96,7 +153,7 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
 
           {watchtowerMsg && (
             <div className={`banner alert-${watchtowerMsg.type}`} style={{ marginBottom: 16 }}>
-              <b>{watchtowerMsg.type === "success" ? "Success" : "Error"}</b>
+              <b>{watchtowerMsg.type === "success" ? "Success" : "Error"}: </b>
               {watchtowerMsg.text}
             </div>
           )}
@@ -177,7 +234,7 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
             <h3 className="section-title">
               <GithubIcon /> GitHub Integration
             </h3>
-            <p className="section-subtitle">Manage OAuth token access and repository authorization.</p>
+            <p className="section-subtitle">Manage OAuth App authorization and accessible repository permissions.</p>
           </div>
 
           <div className="form-stack">
@@ -186,12 +243,63 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
                 <span className="lbl">App Connection:</span>
                 <span className="val font-mono">
                   {githubStatus?.connected ? (
-                    <span className="badge-green">Connected ({githubStatus.installation?.accountLogin})</span>
+                    <span className="badge-green">Connected ✓ ({githubStatus.installation?.accountLogin})</span>
                   ) : (
                     <span className="badge-gray">Not Connected</span>
                   )}
                 </span>
               </div>
+
+              {githubStatus?.connected && (
+                <>
+                  <div className="status-item">
+                    <span className="lbl">GitHub Account:</span>
+                    <span className="val font-mono">@{githubStatus.installation?.accountLogin}</span>
+                  </div>
+                  <div className="status-item">
+                    <span className="lbl">Authorized Repositories:</span>
+                    <span className="val font-mono">{githubRepos.length} repos accessible</span>
+                  </div>
+                </>
+              )}
+
+              {githubStatus?.appName && (
+                <div className="status-item">
+                  <span className="lbl">GitHub App Name:</span>
+                  <span className="val font-mono">{githubStatus.appName}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="button-group">
+              {githubStatus?.connected ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={handleConnectGithub}
+                    disabled={connectingGithub}
+                  >
+                    {connectingGithub ? "Opening GitHub…" : "Re-authorize GitHub"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={handleDisconnectGithub}
+                  >
+                    Disconnect Integration
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleConnectGithub}
+                  disabled={connectingGithub}
+                >
+                  {connectingGithub ? "Connecting…" : "Connect GitHub Account"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -202,32 +310,72 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
             <h3 className="section-title">
               <KeyIcon /> Workspace & API Credentials
             </h3>
-            <p className="section-subtitle">Session token and tenant context.</p>
+            <p className="section-subtitle">Current session identity, active project context, and API health status.</p>
           </div>
 
           <div className="form-stack">
-            <div className="form-group">
-              <label>Current Session Token</label>
-              <div className="code-box-small">{token || "No active token"}</div>
+            <div className="poller-status-box" style={{ gap: 12 }}>
+              <div className="status-item">
+                <span className="lbl">Current Session:</span>
+                <span className="val font-mono">
+                  <span className="badge-green">{sessionIdentity} (Owner)</span>
+                </span>
+              </div>
+
+              <div className="status-item">
+                <span className="lbl">Authentication Mode:</span>
+                <span className="val font-mono">
+                  <span className="badge-gray">
+                    {health?.auth ? `Development (${health.auth})` : "Development (dev)"}
+                  </span>
+                </span>
+              </div>
+
+              {project && (
+                <>
+                  <div className="status-item">
+                    <span className="lbl">Workspace / Tenant ID:</span>
+                    <span className="val font-mono">{project.tenantId}</span>
+                  </div>
+                  <div className="status-item">
+                    <span className="lbl">Active Project:</span>
+                    <span className="val font-mono">{project.name} ({project.id})</span>
+                  </div>
+                </>
+              )}
+
+              {health && (
+                <>
+                  <div className="status-item">
+                    <span className="lbl">System API Health:</span>
+                    <span className="val font-mono">
+                      <span className="badge-green">● Healthy ({health.status})</span>
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="lbl">Queue Mode:</span>
+                    <span className="val font-mono">{health.queue}</span>
+                  </div>
+                  <div className="status-item">
+                    <span className="lbl">API Base Endpoint:</span>
+                    <span className="val font-mono">http://localhost:8787</span>
+                  </div>
+                </>
+              )}
+
+              <div className="status-item">
+                <span className="lbl">GitHub Connection Overview:</span>
+                <span className="val font-mono">
+                  {githubStatus?.connected ? (
+                    <span className="badge-green">
+                      Connected ✓ (@{githubStatus.installation?.accountLogin} · {githubRepos.length} repos)
+                    </span>
+                  ) : (
+                    <span className="badge-gray">Not Connected</span>
+                  )}
+                </span>
+              </div>
             </div>
-
-            {project && (
-              <div className="form-group">
-                <label>Active Project ID & Tenant ID</label>
-                <div className="code-box-small">
-                  Project: {project.id} | Tenant: {project.tenantId}
-                </div>
-              </div>
-            )}
-
-            {health && (
-              <div className="form-group">
-                <label>System API Health</label>
-                <div className="code-box-small">
-                  API: {health.status} | Auth Mode: {health.auth} | Queue: {health.queue}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -921,6 +921,138 @@ describe("github app integration", () => {
     expect(res.json().error).toContain("Invalid or expired state");
   });
 
+  it("handles valid callback, extracts tenant from state, inserts into github_installations and returns success", async () => {
+    const { createStateToken } = await import("@ironbastion/core");
+    const secret = process.env["IRONBASTION_SESSION_SECRET"] ?? "ironbastion-dev-secret-key-32-chars";
+    const state = createStateToken(acme, secret);
+
+    const origId = process.env["GITHUB_APP_ID"];
+    const origKey = process.env["GITHUB_APP_PRIVATE_KEY"];
+
+    const { privateKey } = (await import("node:crypto")).generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+
+    process.env["GITHUB_APP_ID"] = "12345";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
+
+    const origFetch = global.fetch;
+    global.fetch = (async (url: string) => {
+      if (url.includes("/app/installations/158741923")) {
+        return new Response(
+          JSON.stringify({
+            id: 158741923,
+            account: { login: "Varad163", type: "User" },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const callbackRes = await app.inject({
+        method: "GET",
+        url: `/v1/integrations/github/callback?state=${encodeURIComponent(state)}&installation_id=158741923`,
+        headers: auth(acme),
+      });
+
+      expect(callbackRes.statusCode).toBe(200);
+      const body = callbackRes.json();
+      expect(body.success).toBe(true);
+      expect(body.tenantId).toBe(acme);
+      expect(body.installationId).toBe("158741923");
+      expect(body.accountLogin).toBe("Varad163");
+
+      // Verify db insertion
+      const { getGithubInstallation, runInTenantTransaction } = await import("@ironbastion/db");
+      const dbInst = await runInTenantTransaction(db, acme, (tx) => getGithubInstallation(tx, acme));
+      expect(dbInst).not.toBeNull();
+      expect(dbInst?.githubInstallationId).toBe("158741923");
+      expect(dbInst?.accountLogin).toBe("Varad163");
+
+      // Verify status returns connected=true
+      const statusRes = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/status",
+        headers: auth(acme),
+      });
+      expect(statusRes.statusCode).toBe(200);
+      expect(statusRes.json().connected).toBe(true);
+      expect(statusRes.json().installation.accountLogin).toBe("Varad163");
+    } finally {
+      global.fetch = origFetch;
+      if (origId !== undefined) process.env["GITHUB_APP_ID"] = origId; else delete process.env["GITHUB_APP_ID"];
+      if (origKey !== undefined) process.env["GITHUB_APP_PRIVATE_KEY"] = origKey; else delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    }
+  });
+
+  it("fetches repository list for installed app including Varad163/test", async () => {
+    const origId = process.env["GITHUB_APP_ID"];
+    const origKey = process.env["GITHUB_APP_PRIVATE_KEY"];
+
+    const { saveGithubInstallation } = await import("@ironbastion/db");
+    await saveGithubInstallation(db, acme, {
+      githubInstallationId: "158741923",
+      accountLogin: "Varad163",
+      accountType: "User",
+    });
+
+    const { privateKey } = (await import("node:crypto")).generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+
+    process.env["GITHUB_APP_ID"] = "12345";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
+
+    const origFetch = global.fetch;
+    global.fetch = (async (url: string) => {
+      if (url.includes("/access_tokens")) {
+        return new Response(JSON.stringify({ token: "ghs_mock_token_123", expires_at: "2099-01-01T00:00:00Z" }), { status: 200 });
+      }
+      if (url.includes("/installation/repositories")) {
+        return new Response(
+          JSON.stringify({
+            repositories: [
+              {
+                id: 991122,
+                name: "test",
+                full_name: "Varad163/test",
+                owner: { login: "Varad163" },
+                default_branch: "main",
+                private: false,
+                clone_url: "https://github.com/Varad163/test.git",
+                html_url: "https://github.com/Varad163/test",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const repoRes = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/repositories",
+        headers: auth(acme),
+      });
+      expect(repoRes.statusCode).toBe(200);
+      const repos = repoRes.json().repositories;
+      expect(repos).toHaveLength(1);
+      expect(repos[0].fullName).toBe("Varad163/test");
+    } finally {
+      global.fetch = origFetch;
+      if (origId !== undefined) process.env["GITHUB_APP_ID"] = origId; else delete process.env["GITHUB_APP_ID"];
+      if (origKey !== undefined) process.env["GITHUB_APP_PRIVATE_KEY"] = origKey; else delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    }
+  });
+
   it("persists and isolates tenant github installations", async () => {
     const { saveGithubInstallation } = await import("@ironbastion/db");
     await saveGithubInstallation(db, acme, {

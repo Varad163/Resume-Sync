@@ -9,6 +9,7 @@ import {
   createStateToken,
   verifyStateToken,
   fetchInstallationDetails,
+  listAppInstallations,
   listInstallationRepositories,
   listRepositoryBranches,
 } from "@ironbastion/core";
@@ -52,6 +53,32 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
     const slug = config.appSlug || toGithubAppSlug(config.appName);
     const url = `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`;
 
+    request.log.info({ tenantId: principal.tenantId, slug, url }, "Generated GitHub connect URL");
+
+    // Check if the GitHub App is already installed on GitHub
+    try {
+      const installations = await listAppInstallations(config);
+      if (installations.length > 0) {
+        const firstInst = installations[0]!;
+        await runTx(request, async (tx) => {
+          await saveGithubInstallation(tx, principal.tenantId, {
+            githubInstallationId: firstInst.id,
+            accountLogin: firstInst.account.login,
+            accountType: firstInst.account.type,
+          });
+          await recordAudit(tx, {
+            tenantId: principal.tenantId,
+            actor: principal.email ?? "github-connect",
+            action: "github.connect.auto_sync",
+            subject: firstInst.id,
+            detail: { accountLogin: firstInst.account.login, accountType: firstInst.account.type },
+          });
+        });
+      }
+    } catch (err) {
+      request.log.warn({ err }, "GitHub App auto-sync during connect failed (falling back to standard URL)");
+    }
+
     return reply.send({ configured: true, url, state });
   });
 
@@ -59,6 +86,11 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
   app.get("/v1/integrations/github/callback", async (request: FastifyRequest, reply: FastifyReply) => {
     const query = (request.query as { state?: string; installation_id?: string; setup_action?: string }) ?? {};
     const { state, installation_id: installationId } = query;
+
+    request.log.info(
+      { hasState: Boolean(state), hasInstallationId: Boolean(installationId), setupAction: query.setup_action },
+      "GitHub callback received",
+    );
 
     if (!state) {
       return reply.code(400).send({ error: "Missing state parameter in GitHub callback" });
@@ -98,6 +130,8 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
           detail: { accountLogin: details.account.login, accountType: details.account.type },
         });
       });
+
+      request.log.info({ tenantId, installationId: details.id, accountLogin: details.account.login }, "Saved GitHub installation in database");
 
       // If requested via browser popup, send postMessage script to notify window opener
       const acceptHeader = request.headers.accept || "";
@@ -141,7 +175,33 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
     const principal = must(request);
     const config = getGithubAppConfigFromEnv();
 
-    const installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
+    let installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
+
+    if (!installation && config) {
+      try {
+        const installations = await listAppInstallations(config);
+        if (installations.length > 0) {
+          const firstInst = installations[0]!;
+          await runTx(request, async (tx) => {
+            await saveGithubInstallation(tx, principal.tenantId, {
+              githubInstallationId: firstInst.id,
+              accountLogin: firstInst.account.login,
+              accountType: firstInst.account.type,
+            });
+            await recordAudit(tx, {
+              tenantId: principal.tenantId,
+              actor: principal.email ?? "github-auto-sync",
+              action: "github.connect.auto_sync",
+              subject: firstInst.id,
+              detail: { accountLogin: firstInst.account.login, accountType: firstInst.account.type },
+            });
+          });
+          installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
+        }
+      } catch (err) {
+        request.log.warn({ err }, "GitHub app installations auto-sync failed");
+      }
+    }
 
     return reply.send({
       configured: Boolean(config),
