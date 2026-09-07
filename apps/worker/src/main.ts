@@ -28,6 +28,19 @@ import {
   type ModelClient,
 } from "@ironbastion/agents";
 
+import fs from "node:fs";
+import path from "node:path";
+
+// Load root .env file for local development if available
+try {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (fs.existsSync(envPath)) {
+    process.loadEnvFile(envPath);
+  }
+} catch {
+  // .env file is optional
+}
+
 let shuttingDown = false;
 
 async function startMonitoringPoller(db: Database, queue: Queue): Promise<void> {

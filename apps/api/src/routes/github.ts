@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import {
   getGithubAppConfigFromEnv,
+  toGithubAppSlug,
   createStateToken,
   verifyStateToken,
   fetchInstallationDetails,
@@ -48,7 +49,8 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
     }
 
     const state = createStateToken(principal.tenantId, secret);
-    const url = `https://github.com/apps/${encodeURIComponent(config.appName ?? "ironbastion-app")}/installations/new?state=${encodeURIComponent(state)}`;
+    const slug = config.appSlug || toGithubAppSlug(config.appName);
+    const url = `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`;
 
     return reply.send({ configured: true, url, state });
   });

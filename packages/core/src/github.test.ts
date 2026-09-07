@@ -6,6 +6,7 @@ import {
   verifyStateToken,
   getGithubAppConfigFromEnv,
   isGithubAppConfigured,
+  toGithubAppSlug,
   type GithubAppConfig,
 } from "./github.js";
 
@@ -25,17 +26,25 @@ describe("GitHub App Core Integration", () => {
 
   const secret = "test-secret-key-32-chars-long!!";
 
-  it("detects GitHub App environment variables correctly", () => {
+  it("converts app display names to URL-friendly GitHub App slugs", () => {
+    expect(toGithubAppSlug("IronBastion Local")).toBe("ironbastion-local");
+    expect(toGithubAppSlug("My Custom Scanner 2.0!")).toBe("my-custom-scanner-2-0");
+    expect(toGithubAppSlug("ironbastion-app")).toBe("ironbastion-app");
+    expect(toGithubAppSlug("")).toBe("ironbastion-app");
+  });
+
+  it("detects GitHub App environment variables correctly and generates slug", () => {
     const envConfigured = {
       GITHUB_APP_ID: "999888",
       GITHUB_APP_PRIVATE_KEY: privateKey,
-      GITHUB_APP_NAME: "my-custom-app",
+      GITHUB_APP_NAME: "IronBastion Local",
     };
     expect(isGithubAppConfigured(envConfigured)).toBe(true);
 
     const config = getGithubAppConfigFromEnv(envConfigured);
     expect(config?.appId).toBe("999888");
-    expect(config?.appName).toBe("my-custom-app");
+    expect(config?.appName).toBe("IronBastion Local");
+    expect(config?.appSlug).toBe("ironbastion-local");
 
     expect(isGithubAppConfigured({})).toBe(false);
   });

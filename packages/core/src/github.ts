@@ -13,6 +13,7 @@ export interface GithubAppConfig {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly appName?: string;
+  readonly appSlug?: string;
 }
 
 export interface GithubRepoInfo {
@@ -30,6 +31,17 @@ export interface GithubBranchInfo {
   readonly name: string;
   readonly commitSha: string;
   readonly isDefault: boolean;
+}
+
+/** Converts a GitHub App display name or input string into a URL-friendly GitHub App slug. */
+export function toGithubAppSlug(nameOrSlug?: string): string {
+  if (!nameOrSlug) return "ironbastion-app";
+  const slugified = nameOrSlug
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\-_]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slugified || "ironbastion-app";
 }
 
 /** Parses GitHub App configuration from process environment variables. */
@@ -51,12 +63,17 @@ export function getGithubAppConfigFromEnv(env: Record<string, string | undefined
     }
   }
 
+  const appName = env["GITHUB_APP_NAME"]?.trim();
+  const rawSlug = env["GITHUB_APP_SLUG"]?.trim();
+  const appSlug = rawSlug || toGithubAppSlug(appName);
+
   return {
     appId: appId.trim(),
     privateKey,
     clientId: env["GITHUB_APP_CLIENT_ID"]?.trim(),
     clientSecret: env["GITHUB_APP_CLIENT_SECRET"]?.trim(),
-    appName: env["GITHUB_APP_NAME"]?.trim() || env["GITHUB_APP_SLUG"]?.trim() || "ironbastion-app",
+    appName: appName || rawSlug || "IronBastion App",
+    appSlug,
   };
 }
 
