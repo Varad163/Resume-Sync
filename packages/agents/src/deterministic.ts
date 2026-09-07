@@ -181,16 +181,16 @@ export function deterministicPlan(findings: readonly Finding[]): PlanSubmission 
       : undefined,
   ].filter((wave): wave is NonNullable<typeof wave> => !!wave);
 
-  const totalDays = actions.reduce((sum, action) => sum + EFFORT_DAYS[action.effort], 0);
+  const totalDays = Math.round(actions.reduce((sum, action) => sum + EFFORT_DAYS[action.effort], 0) * 10) / 10;
 
   return {
-    summary: `${migratable.length} quantum-vulnerable finding(s) across ${grouped.size} component-algorithm group(s), estimated at ${totalDays} engineer-days by rule of thumb. ${PREFIX} This is a mechanical ordering by risk score, not a reviewed migration plan.`,
+    summary: `${migratable.length} quantum-vulnerable finding(s) across ${grouped.size} component-algorithm group(s), estimated at ~${totalDays} days of effort (assuming AI-assisted remediation). ${PREFIX} This is a mechanical ordering by risk score, not a reviewed migration plan.`,
     waves,
     milestoneRisks: [
       {
         milestoneId: "deprecation-2030",
-        atRisk: totalDays > 250,
-        reason: `Rule-based estimate of ${totalDays} engineer-days against the 2030 deprecation of 112-bit classical strength.`,
+        atRisk: totalDays > 25,
+        reason: `Rule-based estimate of ~${totalDays} days against the 2030 deprecation of 112-bit classical strength.`,
       },
     ],
   };

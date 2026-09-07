@@ -53,15 +53,15 @@ export function moveMigrationAction(
 
   // Calculate new totals
   const allActions = newWaves.flatMap((w) => w.actions);
-  const totalEffortDays = allActions.reduce((sum, a) => sum + EFFORT_DAYS[a.effort], 0);
+  const totalEffortDays = Math.round(allActions.reduce((sum, a) => sum + EFFORT_DAYS[a.effort], 0) * 10) / 10;
 
   // Update milestone risk indicators based on the new effort totals
   const milestoneRisks = plan.milestoneRisks.map((risk) => {
     if (risk.milestoneId === "deprecation-2030") {
       return {
         ...risk,
-        atRisk: totalEffortDays > 250,
-        reason: `Estimated ${totalEffortDays} engineer-days against the 2030 deprecation milestone.`,
+        atRisk: totalEffortDays > 25,
+        reason: `Estimated ~${totalEffortDays} days against the 2030 deprecation milestone.`,
       };
     }
     return risk;

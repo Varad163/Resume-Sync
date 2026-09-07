@@ -6,6 +6,7 @@ import {
   listProjects,
   recordAudit,
   runInTenantTransaction,
+  updateProject,
   updateProjectMonitoring,
   type Database,
 } from "@ironbastion/db";
@@ -59,6 +60,32 @@ export async function registerProjectRoutes(app: FastifyInstance, deps: ServerDe
       const project = await getProject(tx, principal.tenantId, id);
       if (!project) return reply.code(404).send({ error: "project not found" });
       return { project };
+    });
+  });
+
+  app.put("/v1/projects/:id", async (request, reply) => {
+    const principal = must(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as { name?: string; description?: string; targets?: ScanTarget[] };
+
+    return runTx(request, async (tx) => {
+      const updated = await updateProject(tx, principal.tenantId, id, {
+        name: body?.name,
+        description: body?.description,
+        targets: body?.targets,
+      });
+
+      if (!updated) return reply.code(404).send({ error: "project not found" });
+
+      await recordAudit(tx, {
+        tenantId: principal.tenantId,
+        actor: principal.email,
+        action: "project.update",
+        subject: id,
+        detail: { name: body?.name, targetCount: body?.targets?.length },
+      });
+
+      return { project: updated };
     });
   });
 

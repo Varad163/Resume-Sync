@@ -106,7 +106,7 @@ export function renderReport(result: CampaignResult): string {
   lines.push(
     paint(
       COLOURS.grey,
-      `  ${result.plan.totalEffortDays} engineer-days across ${result.plan.waves.length} wave(s)`,
+      `  ~${result.plan.totalEffortDays} days estimated across ${result.plan.waves.length} wave(s)`,
     ),
   );
   lines.push("");

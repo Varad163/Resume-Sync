@@ -7,12 +7,12 @@ const mockPlan = (): MigrationPlan => {
     scanId: "scan_123",
     generatedAt: new Date().toISOString(),
     summary: "Mock plan summary",
-    totalEffortDays: 33, // 1 L (25) + 1 M (8)
+    totalEffortDays: 4.5, // 1 L (3) + 1 M (1.5)
     milestoneRisks: [
       {
         milestoneId: "deprecation-2030",
         atRisk: false,
-        reason: "Estimated days under 250",
+        reason: "Estimated days under 25",
       },
     ],
     provenance: {
@@ -39,7 +39,7 @@ const mockPlan = (): MigrationPlan => {
             currentAlgorithm: "AES-128",
             targetAlgorithm: "AES-256",
             approach: "parameter-change",
-            effort: "M", // 8 days
+            effort: "M", // 1.5 days
             severity: "medium",
             rationale: "",
             dependsOn: [],
@@ -61,7 +61,7 @@ const mockPlan = (): MigrationPlan => {
             currentAlgorithm: "RSA-1024",
             targetAlgorithm: "ML-KEM-768",
             approach: "re-architect",
-            effort: "L", // 25 days
+            effort: "L", // 3 days
             severity: "critical",
             rationale: "",
             dependsOn: [],
@@ -88,14 +88,14 @@ describe("Migration Plan Simulator module", () => {
     expect(updated.waves[1]!.actions).toHaveLength(0);
     expect(updated.waves[0]!.actions.map((a) => a.id)).toContain("action_rsa");
 
-    // Total effort stays consistent at 33 days (8 + 25)
-    expect(updated.totalEffortDays).toBe(33);
+    // Total effort stays consistent at 4.5 days (1.5 + 3)
+    expect(updated.totalEffortDays).toBe(4.5);
   });
 
-  it("updates milestone risks if total days exceed 250", () => {
+  it("updates milestone risks if total days exceed 25", () => {
     const original = mockPlan();
 
-    // Modify the action in-place to have XL effort (60 days) to simulate high effort, but let's test moving.
+    // Modify the action in-place to have XL effort (6 days) to simulate high effort, but let's test moving.
     // Let's create a custom high-effort plan to test milestone triggers.
     const highEffortPlan: MigrationPlan = {
       ...original,
@@ -105,7 +105,7 @@ describe("Migration Plan Simulator module", () => {
           actions: [
             {
               ...original.waves[0]!.actions[0]!,
-              effort: "XL", // 60 days
+              effort: "XL", // 6 days
             },
           ],
         },
@@ -114,7 +114,7 @@ describe("Migration Plan Simulator module", () => {
           actions: [
             {
               ...original.waves[1]!.actions[0]!,
-              effort: "XL", // 60 days
+              effort: "XL", // 6 days
             },
             {
               id: "action_huge",
@@ -123,7 +123,7 @@ describe("Migration Plan Simulator module", () => {
               currentAlgorithm: "3DES",
               targetAlgorithm: "AES-256",
               approach: "re-architect",
-              effort: "XL", // 60 days
+              effort: "XL", // 6 days
               severity: "critical",
               rationale: "",
               dependsOn: [],
@@ -137,7 +137,7 @@ describe("Migration Plan Simulator module", () => {
               currentAlgorithm: "SHA-1",
               targetAlgorithm: "SHA-256",
               approach: "re-architect",
-              effort: "XL", // 60 days
+              effort: "XL", // 6 days
               severity: "high",
               rationale: "",
               dependsOn: [],
@@ -151,7 +151,7 @@ describe("Migration Plan Simulator module", () => {
               currentAlgorithm: "RSA-2048",
               targetAlgorithm: "ML-DSA-65",
               approach: "re-architect",
-              effort: "XL", // 60 days
+              effort: "XL", // 6 days
               severity: "high",
               rationale: "",
               dependsOn: [],
@@ -161,13 +161,13 @@ describe("Migration Plan Simulator module", () => {
           ],
         },
       ],
-      totalEffortDays: 300, // 5 * 60 = 300 days
+      totalEffortDays: 30, // 5 * 6 = 30 days
     };
 
     const updated = moveMigrationAction(highEffortPlan, "action_huge", "wave_1");
-    expect(updated.totalEffortDays).toBe(300);
+    expect(updated.totalEffortDays).toBe(30);
     expect(updated.milestoneRisks[0]!.atRisk).toBe(true);
-    expect(updated.milestoneRisks[0]!.reason).toContain("Estimated 300 engineer-days");
+    expect(updated.milestoneRisks[0]!.reason).toContain("Estimated ~30 days");
   });
 
   it("validates plan integrity and rejects tampered updates", () => {

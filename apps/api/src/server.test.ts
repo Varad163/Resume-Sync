@@ -96,6 +96,24 @@ describe("projects", () => {
     });
     expect(response.statusCode).toBe(400);
   });
+
+  it("updates project targets via PUT /v1/projects/:id", async () => {
+    const created = await createProject(db, { tenantId: acme, name: "p1", targets: [] });
+    const newTarget = { kind: "git-repository", id: "t1", name: "repo", remoteUrl: "https://github.com/org/repo.git", ref: "main" };
+    
+    const response = await app.inject({
+      method: "PUT",
+      url: `/v1/projects/${created.id}`,
+      headers: auth(acme),
+      payload: { name: "p1-updated", targets: [newTarget] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const { project } = response.json();
+    expect(project.name).toBe("p1-updated");
+    expect(project.targets).toHaveLength(1);
+    expect(project.targets[0].remoteUrl).toBe("https://github.com/org/repo.git");
+  });
 });
 
 describe("scans", () => {

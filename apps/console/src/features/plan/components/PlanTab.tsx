@@ -90,8 +90,11 @@ export function Plan({
           ) : (
             <span style={{ color: "var(--quantum)", fontSize: 13, fontFamily: "var(--mono)" }}>AI Baseline Roadmap</span>
           )}
-          <span style={{ marginLeft: 16, color: "var(--muted)", fontSize: 13 }}>
-            Effort: <b>{displayPlan.totalEffortDays} engineer-days</b>
+          <span
+            style={{ marginLeft: 16, color: "var(--muted)", fontSize: 13 }}
+            title="Estimate assumes AI-assisted development and automated security tooling."
+          >
+            Effort: <b>~{displayPlan.totalEffortDays} days</b>
           </span>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -124,17 +127,23 @@ export function Plan({
         {displayPlan.summary}
       </p>
 
-      {displayPlan.waves.map((wave) => (
-        <section className="wave" key={wave.id}>
-          <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <h3>{wave.name}</h3>
-              <p className="why">{wave.rationale}</p>
-            </div>
-            <div className="mono label" style={{ fontSize: 11, color: "var(--display)", background: "var(--raised)", padding: "4px 8px" }}>
-              Wave Effort: {wave.actions.reduce((sum, a) => sum + EFFORT_DAYS[a.effort as keyof typeof EFFORT_DAYS], 0)} days
-            </div>
-          </header>
+      {displayPlan.waves.map((wave) => {
+        const waveEffort = Math.round(wave.actions.reduce((sum, a) => sum + EFFORT_DAYS[a.effort as keyof typeof EFFORT_DAYS], 0) * 10) / 10;
+        return (
+          <section className="wave" key={wave.id}>
+            <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <h3>{wave.name}</h3>
+                <p className="why">{wave.rationale}</p>
+              </div>
+              <div
+                className="mono label"
+                style={{ fontSize: 11, color: "var(--display)", background: "var(--raised)", padding: "4px 8px" }}
+                title="Estimate assumes AI-assisted development and automated security tooling."
+              >
+                Wave Effort: ~{waveEffort} days
+              </div>
+            </header>
           {wave.actions.length === 0 ? (
             <div style={{ padding: "20px", border: "1px dashed var(--edge)", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 20 }}>
               No actions assigned to this wave.
@@ -195,8 +204,9 @@ export function Plan({
               </tbody>
             </table>
           )}
-        </section>
-      ))}
+          </section>
+        );
+      })}
     </>
   );
 }

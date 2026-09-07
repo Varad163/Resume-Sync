@@ -135,27 +135,61 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
   const { scan, posture } = detail;
   const running = scan.status === "running" || scan.status === "queued";
 
+  const targetObj = scan.targets?.[0] as { name?: string; remoteUrl?: string; ref?: string } | undefined;
+  const repoName =
+    targetObj?.name ||
+    targetObj?.remoteUrl?.split("/").pop()?.replace(/\.git$/, "") ||
+    "Repository";
+  const branchName = targetObj?.ref || "main";
+
+  const criticalFindingsCount = posture?.counts?.["critical"] ?? findings.filter((f) => f.risk.severity === "critical").length;
+  const totalAssetsCount = cbom?.components.length ?? 0;
+
+  const tabLabels: { key: Tab; label: string; count?: number }[] = [
+    { key: "findings", label: "Findings", count: findings.length },
+    { key: "agents", label: "Agents" },
+    { key: "inventory", label: "Inventory", count: totalAssetsCount },
+    { key: "plan", label: "Plan" },
+    { key: "watchtower", label: "Watchtower" },
+  ];
+
   return (
-    <>
-      <header className="pagehead">
-        <div>
-          <button className="label" type="button" onClick={onBack} style={{ background: "none", border: 0, cursor: "pointer", padding: 0 }}>
-            ← All scans
+    <div className="scan-detail-page">
+      {/* Top Scan Header Area */}
+      <header className="scan-report-header">
+        <div className="header-left">
+          <button
+            className="back-link-btn"
+            type="button"
+            onClick={onBack}
+          >
+            ← Back to Scans
           </button>
-          <h1 className="mono" style={{ fontSize: 22 }}>
-            {scan.id}
-          </h1>
-          <p>
-            Started {new Date(scan.startedAt).toLocaleString()}
-            {scan.finishedAt ? `, finished ${new Date(scan.finishedAt).toLocaleTimeString()}` : ""}
-          </p>
+          
+          <div className="repo-title-row">
+            <h1 className="scan-repo-title">
+              {repoName} <span className="branch-tag">/ {branchName}</span>
+            </h1>
+            <span className={`status-badge-pill status-${scan.status}`}>
+              {scan.status === "succeeded" ? "✓ Completed" : scan.status === "failed" ? "✕ Failed" : "⏳ Running"}
+            </span>
+          </div>
+
+          <div className="scan-meta-row">
+            <span className="scan-time-text">
+              Scanned: {new Date(scan.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · {new Date(scan.startedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </span>
+            <span className="dot-sep">•</span>
+            <span className="scan-id-subtle">Scan ID: {scan.id}</span>
+          </div>
         </div>
+
         {scan.status === "succeeded" ? (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="header-actions">
             <button className="btn ghost" type="button" onClick={() => void handleOpenReport()}>
               Report
             </button>
-            <button className="btn" type="button" onClick={() => void handleDownloadCbom()}>
+            <button className="btn secondary" type="button" onClick={() => void handleDownloadCbom()}>
               Download CBOM
             </button>
             <button className="btn primary" type="button" onClick={() => setCertifying(true)}>
@@ -166,58 +200,71 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
       </header>
 
       {running ? (
-        <div className="banner">
+        <div className="banner" style={{ marginBottom: 24 }}>
           <b>Scan in progress</b>
           <PhaseTrail phase={scan.phase} status={scan.status} />
         </div>
       ) : null}
 
       {scan.status === "failed" ? (
-        <div className="banner">
+        <div className="banner alert-error" style={{ marginBottom: 24 }}>
           <b>Scan failed</b>
           {scan.error ?? "No reason was recorded."}
         </div>
       ) : null}
 
+      {/* 5-Card Security Metric Grid */}
       {posture ? (
         <Readout
           items={[
             {
-              label: "Posture",
-              value: posture.overall,
-              sub: posture.severity.toUpperCase(),
+              label: "Security Posture",
+              value: `${posture.overall} / 100`,
+              sub: `${posture.severity.toUpperCase()} RISK`,
               tone: SEVERITY_TONE[posture.severity],
             },
-            { label: "Confirmed", value: scan.stats.findingsConfirmed, sub: "published findings" },
-            { label: "Awaiting review", value: scan.stats.needsHuman, sub: "below confidence bar" },
-            { label: "Crypto assets", value: cbom?.components.length ?? 0, sub: "in the CBOM" },
             {
-              label: "Effort",
-              value: plan?.totalEffortDays ?? 0,
-              sub: "engineer-days planned",
+              label: "Critical Findings",
+              value: criticalFindingsCount,
+              sub: "Requires attention",
+              tone: "var(--critical)",
+            },
+            {
+              label: "Total Findings",
+              value: scan.stats.findingsConfirmed,
+              sub: `${scan.stats.needsHuman} awaiting review`,
+            },
+            {
+              label: "Crypto Assets",
+              value: totalAssetsCount,
+              sub: "Click to view Inventory →",
+              onClick: () => setTab("inventory"),
+            },
+            {
+              label: "Remediation Effort",
+              value: `~${plan?.totalEffortDays ?? 0} days`,
+              sub: "AI-assisted estimate",
             },
           ]}
         />
       ) : null}
 
+      {/* Risk Spectrum Card */}
       {findings.length > 0 ? <Spectrum findings={findings} onSelect={setSelected} /> : null}
 
-      {detail.inventory?.summary ? (
-        <p style={{ color: "var(--body)", fontSize: 14, maxWidth: "78ch", marginBottom: 26 }}>
-          {detail.inventory.summary}
-        </p>
-      ) : null}
-
-      <div className="tabs">
-        {(["findings", "agents", "inventory", "plan", "watchtower"] as Tab[]).map((name) => (
+      {/* Main Tab Navigation */}
+      <div className="scan-report-tabs">
+        {tabLabels.map((item) => (
           <button
-            key={name}
+            key={item.key}
             type="button"
-            aria-selected={tab === name}
-            role="tab"
-            onClick={() => setTab(name)}
+            className={`report-tab-btn ${tab === item.key ? "active" : ""}`}
+            onClick={() => setTab(item.key)}
           >
-            {name}
+            <span>{item.label}</span>
+            {item.count !== undefined && item.count > 0 ? (
+              <span className="tab-count-pill">{item.count}</span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -266,6 +313,6 @@ export function ScanView({ id, onBack }: { id: string; onBack: () => void }) {
       ) : null}
 
       {certifying && <CertifyModal scanId={scan.id} onClose={() => setCertifying(false)} />}
-    </>
+    </div>
   );
 }

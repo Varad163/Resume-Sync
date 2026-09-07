@@ -155,6 +155,27 @@ export async function getProject(
   return rows[0] ? toProject(rows[0]) : undefined;
 }
 
+export async function updateProject(
+  db: Database,
+  tenantId: string,
+  id: string,
+  input: { name?: string; description?: string; targets?: ScanTarget[] },
+): Promise<Project | undefined> {
+  const existing = await getProject(db, tenantId, id);
+  if (!existing) return undefined;
+
+  const name = input.name ?? existing.name;
+  const description = input.description ?? existing.description;
+  const targets = input.targets ?? existing.targets;
+
+  await db.query(
+    "UPDATE projects SET name = $1, description = $2, targets = $3 WHERE tenant_id = $4 AND id = $5",
+    [name, description, JSON.stringify(targets), tenantId, id],
+  );
+
+  return getProject(db, tenantId, id);
+}
+
 interface ProjectRow {
   id: string;
   tenant_id: string;
