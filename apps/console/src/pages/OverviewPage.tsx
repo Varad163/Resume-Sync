@@ -24,6 +24,8 @@ export function Overview({
   const [error, setError] = useState<string>();
   const [githubStatus, setGithubStatus] = useState<GithubStatusResponse | null>(null);
   const [githubRepos, setGithubRepos] = useState<GithubRepository[]>([]);
+  const [githubLoading, setGithubLoading] = useState(true);
+  const [githubError, setGithubError] = useState<string | null>(null);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
   const securityTips = [
@@ -58,15 +60,21 @@ export function Overview({
   }, []);
 
   const loadGithubData = useCallback(async () => {
+    setGithubLoading(true);
+    setGithubError(null);
     try {
       const status = await api.getGithubStatus();
       setGithubStatus(status);
       if (status.connected) {
         const { repositories } = await api.getGithubRepositories().catch(() => ({ repositories: [] }));
         setGithubRepos(repositories);
+      } else {
+        setGithubRepos([]);
       }
     } catch (e) {
-      console.warn("GitHub status load failed:", e);
+      setGithubError((e as Error).message || "Failed to load GitHub status");
+    } finally {
+      setGithubLoading(false);
     }
   }, []);
 
@@ -144,38 +152,59 @@ export function Overview({
       {/* GitHub Onboarding Hero Banner */}
       <div className="github-hero-banner">
         <div className="hero-content">
-          <h2 className="hero-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {githubStatus?.connected ? (
-              <>
-                <span style={{ color: "#10b981" }}>✓</span> GitHub Connected
-              </>
-            ) : (
-              "Connect your GitHub and start scanning"
-            )}
-          </h2>
-          <p className="hero-subtitle">
-            {githubStatus?.connected
-              ? githubRepos.length > 0
-                ? `Connected as @${githubStatus.installation?.accountLogin || "user"}. ${githubRepos.length} ${githubRepos.length === 1 ? "repository" : "repositories"} available.`
-                : `Connected as @${githubStatus.installation?.accountLogin || "user"}. Your GitHub account is ready.`
-              : "Link your GitHub account, select a repository, and let IronBastion find security issues for you."}
-          </p>
-          <div className="hero-actions">
-            {githubStatus?.connected ? (
-              <>
+          {githubLoading ? (
+            <>
+              <h2 className="hero-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                Checking GitHub connection...
+              </h2>
+              <p className="hero-subtitle">Fetching GitHub App authorization status.</p>
+            </>
+          ) : githubError ? (
+            <>
+              <h2 className="hero-title" style={{ color: "#ef4444" }}>
+                GitHub connection status unavailable
+              </h2>
+              <p className="hero-subtitle">{githubError}</p>
+              <div className="hero-actions">
+                <button type="button" className="btn primary" onClick={() => void loadGithubData()}>
+                  Retry
+                </button>
+              </div>
+            </>
+          ) : githubStatus?.connected ? (
+            <>
+              <h2 className="hero-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ color: "#10b981" }}>✓</span> GitHub is connected
+              </h2>
+              <p className="hero-subtitle">
+                Your GitHub repositories are ready to scan for cryptographic and post-quantum risks.
+                {githubStatus.installation?.accountLogin && (
+                  <span style={{ display: "block", marginTop: 4, fontSize: "0.875rem", opacity: 0.9 }}>
+                    Connected as <strong>@{githubStatus.installation.accountLogin}</strong>
+                    {githubRepos.length > 0 ? ` · ${githubRepos.length} ${githubRepos.length === 1 ? "repository" : "repositories"} accessible` : ""}
+                  </span>
+                )}
+              </p>
+              <div className="hero-actions">
                 <button type="button" className="btn primary github-btn" onClick={onOpenAddRepo}>
-                  <GithubIcon size={16} /> {githubRepos.length > 0 ? "Select Repository" : "Add Repository"}
+                  <GithubIcon size={16} /> Scan Repository
                 </button>
                 <button
                   type="button"
                   className="btn ghost-hero"
                   onClick={() => onNavigateView("integrations")}
                 >
-                  Manage Integration
+                  Manage GitHub
                 </button>
-              </>
-            ) : (
-              <>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="hero-title">Connect your GitHub and start scanning</h2>
+              <p className="hero-subtitle">
+                Link your GitHub account, select a repository, and let IronBastion discover cryptographic risks.
+              </p>
+              <div className="hero-actions">
                 <button type="button" className="btn primary github-btn" onClick={handleConnectGithub}>
                   <GithubIcon size={16} /> Connect GitHub
                 </button>
@@ -186,9 +215,9 @@ export function Overview({
                 >
                   View Documentation
                 </button>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="hero-graphic">

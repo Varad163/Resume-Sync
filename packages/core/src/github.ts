@@ -195,6 +195,35 @@ export async function fetchInstallationDetails(
   };
 }
 
+/** Lists active GitHub App installations using the App JWT. */
+export async function listAppInstallations(
+  config: GithubAppConfig,
+  fetchFn: typeof fetch = fetch,
+): Promise<Array<{ id: string; account: { login: string; type: string } }>> {
+  const jwt = createAppJwt(config);
+  const response = await fetchFn("https://api.github.com/app/installations", {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${jwt}`,
+      "User-Agent": "IronBastion-Platform",
+    },
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to list GitHub App installations (${response.status}): ${errText}`);
+  }
+
+  const data = (await response.json()) as Array<{ id: number; account: { login: string; type: string } }>;
+  return (data ?? []).map((item) => ({
+    id: String(item.id),
+    account: {
+      login: item.account?.login ?? "",
+      type: item.account?.type ?? "User",
+    },
+  }));
+}
+
 /** Lists repositories accessible to the GitHub App installation. */
 export async function listInstallationRepositories(
   config: GithubAppConfig,

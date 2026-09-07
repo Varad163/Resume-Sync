@@ -82,4 +82,23 @@ describe("GitHub App Core Integration", () => {
     // Corrupted state string
     expect(verifyStateToken("invalid-base64url-string", secret)).toBeNull();
   });
+
+  it("lists app installations using App JWT", async () => {
+    const mockFetch = async () =>
+      new Response(
+        JSON.stringify([
+          {
+            id: 158741923,
+            account: { login: "Varad163", type: "User" },
+          },
+        ]),
+        { status: 200 },
+      );
+
+    const { listAppInstallations } = await import("./github.js");
+    const installations = await listAppInstallations(testConfig, mockFetch as unknown as typeof fetch);
+    expect(installations).toHaveLength(1);
+    expect(installations[0]?.id).toBe("158741923");
+    expect(installations[0]?.account.login).toBe("Varad163");
+  });
 });
