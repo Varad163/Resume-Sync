@@ -63,7 +63,7 @@ export type MigrationApproach =
 
 export type EffortSize = "S" | "M" | "L" | "XL";
 
-export const EFFORT_DAYS: Record<EffortSize, number> = { S: 2, M: 8, L: 25, XL: 60 };
+export const EFFORT_DAYS: Record<EffortSize, number> = { S: 0.5, M: 1.5, L: 3, XL: 6 };
 
 export interface MigrationAction {
   readonly id: string;

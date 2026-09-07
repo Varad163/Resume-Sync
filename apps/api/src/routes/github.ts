@@ -83,7 +83,7 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
     try {
       const details = await fetchInstallationDetails(config, installationId);
 
-      await runTx(request, async (tx) => {
+      await runInTenantTransaction(deps.db, tenantId, async (tx) => {
         await saveGithubInstallation(tx, tenantId, {
           githubInstallationId: details.id,
           accountLogin: details.account.login,
@@ -92,7 +92,7 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
 
         await recordAudit(tx, {
           tenantId,
-          actor: request.principal?.email ?? "system",
+          actor: request.principal?.email ?? "github-oauth",
           action: "github.connect",
           subject: details.id,
           detail: { accountLogin: details.account.login, accountType: details.account.type },

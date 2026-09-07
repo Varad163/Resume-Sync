@@ -21,17 +21,21 @@ import { RepositoriesPage } from "./pages/RepositoriesPage.js";
 import { ScanView } from "./pages/ScanDetailPage.js";
 import { ScansPage } from "./pages/ScansPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { DocsLayout } from "./docs/DocsLayout.js";
+import { DocsPageRenderer } from "./docs/DocsPageRenderer.js";
 
 type View =
   | { name: NavView }
   | { name: "scan"; id: string }
-  | { name: "docs/github" };
+  | { name: "docs/github" }
+  | { name: "docs"; path: string };
 
 function getInitialView(): View {
   if (typeof window !== "undefined") {
     const path = window.location.pathname.replace(/\/$/, "");
-    if (path === "/docs/github") {
-      return { name: "docs/github" };
+    if (path.startsWith("/docs")) {
+      if (path === "/docs/github") return { name: "docs/github" };
+      return { name: "docs", path: path || "/docs" };
     }
   }
   return { name: "overview" };
@@ -51,6 +55,8 @@ export default function App() {
       let targetPath = "/";
       if (newView.name === "docs/github") {
         targetPath = "/docs/github";
+      } else if (newView.name === "docs") {
+        targetPath = newView.path;
       }
       if (window.location.pathname !== targetPath) {
         window.history.pushState(null, "", targetPath);
@@ -61,8 +67,12 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.replace(/\/$/, "");
-      if (path === "/docs/github") {
-        setView({ name: "docs/github" });
+      if (path.startsWith("/docs")) {
+        if (path === "/docs/github") {
+          setView({ name: "docs/github" });
+        } else {
+          setView({ name: "docs", path: path || "/docs" });
+        }
       } else {
         setView({ name: "overview" });
       }
@@ -102,7 +112,16 @@ export default function App() {
     void loadData();
     void loadGithubRepos();
     const interval = setInterval(() => void loadData(), 4000);
-    return () => clearInterval(interval);
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "IRONBASTION_GITHUB_CONNECTED") {
+        void loadGithubRepos();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("message", handleMessage);
+    };
   }, [loadData, loadGithubRepos]);
 
   const handleLogout = () => {
@@ -116,6 +135,22 @@ export default function App() {
     void loadData();
     void loadGithubRepos();
   };
+
+  // Render docs layout for all /docs routes
+  if (view.name === "docs") {
+    return (
+      <DocsLayout
+        currentPath={view.path}
+        onNavigateDoc={(path) => navigate({ name: "docs", path })}
+        onBackToConsole={() => navigate({ name: "overview" })}
+      >
+        <DocsPageRenderer
+          currentPath={view.path}
+          onNavigate={(path) => navigate({ name: "docs", path })}
+        />
+      </DocsLayout>
+    );
+  }
 
   // If unauthenticated and accessing static docs route, render static docs directly without auth lock
   if (!token) {

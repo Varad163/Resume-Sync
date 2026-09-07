@@ -74,7 +74,16 @@ export function Overview({
     void loadData();
     void loadGithubData();
     const timer = setInterval(() => void loadData(), 3000);
-    return () => clearInterval(timer);
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "IRONBASTION_GITHUB_CONNECTED") {
+        void loadGithubData();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("message", handleMessage);
+    };
   }, [loadData, loadGithubData]);
 
   const handleConnectGithub = async () => {
@@ -94,13 +103,17 @@ export function Overview({
   const totalScans = scans.length;
   let totalCritical = 0;
   let totalHigh = 0;
-  let totalResolved = 0;
+  let totalMedium = 0;
+  let totalLow = 0;
 
   scans.forEach((scan) => {
-    if (scan.stats?.findingsConfirmed) {
-      totalCritical += Math.ceil(scan.stats.findingsConfirmed * 0.25);
-      totalHigh += Math.floor(scan.stats.findingsConfirmed * 0.45);
-      totalResolved += Math.floor(scan.stats.findingsConfirmed * 0.3);
+    if (scan.posture?.counts) {
+      totalCritical += scan.posture.counts["critical"] ?? 0;
+      totalHigh += scan.posture.counts["high"] ?? 0;
+      totalMedium += scan.posture.counts["medium"] ?? 0;
+      totalLow += scan.posture.counts["low"] ?? 0;
+    } else if (scan.stats?.findingsConfirmed) {
+      totalCritical += scan.stats.findingsConfirmed;
     }
   });
 
@@ -131,19 +144,27 @@ export function Overview({
       {/* GitHub Onboarding Hero Banner */}
       <div className="github-hero-banner">
         <div className="hero-content">
-          <h2 className="hero-title">
-            {githubStatus?.connected ? "GitHub Integration Active" : "Connect your GitHub and start scanning"}
+          <h2 className="hero-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {githubStatus?.connected ? (
+              <>
+                <span style={{ color: "#10b981" }}>✓</span> GitHub Connected
+              </>
+            ) : (
+              "Connect your GitHub and start scanning"
+            )}
           </h2>
           <p className="hero-subtitle">
             {githubStatus?.connected
-              ? `Connected to ${githubStatus.installation?.accountLogin || "GitHub"}. ${githubRepos.length} repositories authorized for automated security scans.`
+              ? githubRepos.length > 0
+                ? `Connected as @${githubStatus.installation?.accountLogin || "user"}. ${githubRepos.length} ${githubRepos.length === 1 ? "repository" : "repositories"} available.`
+                : `Connected as @${githubStatus.installation?.accountLogin || "user"}. Your GitHub account is ready.`
               : "Link your GitHub account, select a repository, and let IronBastion find security issues for you."}
           </p>
           <div className="hero-actions">
             {githubStatus?.connected ? (
               <>
                 <button type="button" className="btn primary github-btn" onClick={onOpenAddRepo}>
-                  <GithubIcon size={16} /> Select Repository & Scan
+                  <GithubIcon size={16} /> {githubRepos.length > 0 ? "Select Repository" : "Add Repository"}
                 </button>
                 <button
                   type="button"
@@ -197,7 +218,7 @@ export function Overview({
           <div className="metric-info">
             <div className="metric-header">
               <span className="metric-value">{totalScans}</span>
-              <span className="trend-badge up">↑ 20%</span>
+              <span className="trend-badge up">Active</span>
             </div>
             <div className="metric-label">Total Scans</div>
           </div>
@@ -210,9 +231,13 @@ export function Overview({
           <div className="metric-info">
             <div className="metric-header">
               <span className="metric-value">{totalCritical}</span>
-              <span className="trend-badge up-red">↑ 2</span>
+              {totalCritical > 0 ? (
+                <span className="trend-badge up-red">Action Req</span>
+              ) : (
+                <span className="trend-badge up-green">Clean</span>
+              )}
             </div>
-            <div className="metric-label">Critical Issues</div>
+            <div className="metric-label">Critical Vulnerabilities</div>
           </div>
         </div>
 
@@ -223,9 +248,13 @@ export function Overview({
           <div className="metric-info">
             <div className="metric-header">
               <span className="metric-value">{totalHigh}</span>
-              <span className="trend-badge down">↓ 6</span>
+              {totalHigh > 0 ? (
+                <span className="trend-badge up-orange">High Risk</span>
+              ) : (
+                <span className="trend-badge up-green">Clean</span>
+              )}
             </div>
-            <div className="metric-label">High Issues</div>
+            <div className="metric-label">High Severity Issues</div>
           </div>
         </div>
 
@@ -235,15 +264,15 @@ export function Overview({
           </div>
           <div className="metric-info">
             <div className="metric-header">
-              <span className="metric-value">{totalResolved}</span>
-              <span className="trend-badge up-green">↑ 12</span>
+              <span className="metric-value">{totalMedium + totalLow}</span>
+              <span className="trend-badge up-green">Medium & Low</span>
             </div>
-            <div className="metric-label">Issues Resolved</div>
+            <div className="metric-label">Minor / Info Issues</div>
           </div>
         </div>
       </div>
 
-      {/* Content Split: Left = Recent Scans Table | Right = Quick Actions + Security Tips */}
+      {/* Dashboard Main Content Grid */}
       <div className="dashboard-content-grid">
         {/* Left Column: Recent Scans */}
         <div className="recent-scans-card">
@@ -282,19 +311,25 @@ export function Overview({
                     (scan.targets?.[0] as { name?: string })?.name ||
                     (scan.targets?.[0] as { remoteUrl?: string })?.remoteUrl?.split("/").pop()?.replace(/\.git$/, "") ||
                     "Repository";
+                  const targetRef = (scan.targets?.[0] as { ref?: string })?.ref;
 
                   const timeAgo = formatRelativeTime(scan.startedAt);
-                  const confirmed = scan.stats?.findingsConfirmed ?? 0;
-                  const crit = Math.ceil(confirmed * 0.25);
-                  const high = Math.floor(confirmed * 0.45);
-                  const low = Math.floor(confirmed * 0.3);
+                  const counts = scan.posture?.counts;
+                  const crit = counts?.["critical"] ?? (scan.stats?.findingsConfirmed ? Math.ceil(scan.stats.findingsConfirmed * 0.25) : 0);
+                  const high = counts?.["high"] ?? (scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.45) : 0);
+                  const low = counts?.["low"] ?? counts?.["medium"] ?? (scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.3) : 0);
 
                   return (
                     <tr key={scan.id}>
                       <td>
-                        <div className="repo-cell">
+                        <div className="repo-cell" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <GithubIcon size={16} />
-                          <span className="repo-name-text">{targetName}</span>
+                          <div>
+                            <div className="repo-name-text" style={{ fontWeight: 600 }}>{targetName}</div>
+                            <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                              {targetRef ? `ref: ${targetRef}` : scan.id}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td>

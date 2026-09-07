@@ -37,10 +37,17 @@ export function IssuesPage({ scans, onSelectScan }: IssuesPageProps) {
       });
   }, [selectedScanId, latestScan?.id]);
 
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
+
   const criticalCount = findings.filter((f) => f.risk.severity === "critical").length;
   const highCount = findings.filter((f) => f.risk.severity === "high").length;
   const mediumCount = findings.filter((f) => f.risk.severity === "medium").length;
   const lowCount = findings.filter((f) => f.risk.severity === "low").length;
+
+  const filteredFindings = findings.filter((f) => {
+    if (severityFilter === "all") return true;
+    return f.risk.severity === severityFilter;
+  });
 
   const currentScanId = selectedScanId || latestScan?.id;
 
@@ -58,7 +65,10 @@ export function IssuesPage({ scans, onSelectScan }: IssuesPageProps) {
             <select
               className="select-input sm"
               value={currentScanId || ""}
-              onChange={(e) => setSelectedScanId(e.target.value)}
+              onChange={(e) => {
+                setSelectedScanId(e.target.value);
+                setSeverityFilter("all");
+              }}
             >
               {scans.map((scan) => (
                 <option key={scan.id} value={scan.id}>
@@ -81,45 +91,70 @@ export function IssuesPage({ scans, onSelectScan }: IssuesPageProps) {
 
       {/* Summary KPI Pills */}
       <div className="issues-kpi-bar">
-        <div className="kpi-card critical">
+        <div
+          className={`kpi-card critical ${severityFilter === "critical" ? "active-filter" : ""}`}
+          onClick={() => setSeverityFilter((prev) => (prev === "critical" ? "all" : "critical"))}
+          style={{ cursor: "pointer" }}
+        >
           <div className="kpi-label">Critical</div>
           <div className="kpi-value">{criticalCount}</div>
           <div className="kpi-sub">Quantum-broken algorithms</div>
         </div>
-        <div className="kpi-card high">
+        <div
+          className={`kpi-card high ${severityFilter === "high" ? "active-filter" : ""}`}
+          onClick={() => setSeverityFilter((prev) => (prev === "high" ? "all" : "high"))}
+          style={{ cursor: "pointer" }}
+        >
           <div className="kpi-label">High</div>
           <div className="kpi-value">{highCount}</div>
           <div className="kpi-sub">Weakened algorithms</div>
         </div>
-        <div className="kpi-card medium">
+        <div
+          className={`kpi-card medium ${severityFilter === "medium" ? "active-filter" : ""}`}
+          onClick={() => setSeverityFilter((prev) => (prev === "medium" ? "all" : "medium"))}
+          style={{ cursor: "pointer" }}
+        >
           <div className="kpi-label">Medium</div>
           <div className="kpi-value">{mediumCount}</div>
           <div className="kpi-sub">Deprecated key lengths</div>
         </div>
-        <div className="kpi-card low">
+        <div
+          className={`kpi-card low ${severityFilter === "low" ? "active-filter" : ""}`}
+          onClick={() => setSeverityFilter((prev) => (prev === "low" ? "all" : "low"))}
+          style={{ cursor: "pointer" }}
+        >
           <div className="kpi-label">Low</div>
           <div className="kpi-value">{lowCount}</div>
           <div className="kpi-sub">Informational & safe</div>
         </div>
       </div>
 
-      {findings.length > 0 && (
+      {filteredFindings.length > 0 && (
         <div className="spectrum-card-wrapper" style={{ marginBottom: 24 }}>
-          <Spectrum findings={findings} onSelect={setSelectedFinding} />
+          <Spectrum findings={filteredFindings} onSelect={setSelectedFinding} />
         </div>
       )}
 
       {loading ? (
         <div className="loading-card">Loading security findings…</div>
-      ) : findings.length === 0 ? (
+      ) : filteredFindings.length === 0 ? (
         <div className="empty-card">
           <h3>No security issues found</h3>
-          <p>Great news! No cryptographic vulnerabilities were detected in the selected scan.</p>
+          <p>
+            {severityFilter !== "all"
+              ? `No ${severityFilter} severity findings in this scan.`
+              : "Great news! No cryptographic vulnerabilities were detected in the selected scan."}
+          </p>
+          {severityFilter !== "all" && (
+            <button type="button" className="btn ghost sm" onClick={() => setSeverityFilter("all")} style={{ marginTop: 12 }}>
+              Clear Severity Filter
+            </button>
+          )}
         </div>
       ) : (
         <div className="findings-table-card">
           <FindingsTable
-            findings={findings}
+            findings={filteredFindings}
             selected={selectedFinding}
             onSelect={setSelectedFinding}
           />

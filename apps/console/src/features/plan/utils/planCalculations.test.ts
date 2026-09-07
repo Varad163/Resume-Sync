@@ -62,19 +62,19 @@ const samplePlan: MigrationPlan = {
       ],
     },
   ],
-  totalEffortDays: 33, // 8 (M) + 25 (L)
+  totalEffortDays: 4.5, // 1.5 (M) + 3 (L)
   milestoneRisks: [
     {
       milestoneId: "deprecation-2030",
       atRisk: false,
-      reason: "Estimated 33 engineer-days against the 2030 deprecation milestone.",
+      reason: "Estimated ~4.5 days against the 2030 deprecation milestone.",
     },
   ],
 };
 
 describe("planCalculations", () => {
   it("exports correct EFFORT_DAYS constants", () => {
-    expect(EFFORT_DAYS).toEqual({ S: 2, M: 8, L: 25, XL: 60 });
+    expect(EFFORT_DAYS).toEqual({ S: 0.5, M: 1.5, L: 3, XL: 6 });
   });
 
   it("moves an action between waves correctly", () => {
@@ -89,11 +89,11 @@ describe("planCalculations", () => {
 
   it("recalculates total effort days accurately", () => {
     const updated = moveMigrationAction(samplePlan, "act-1", "wave-2");
-    // total effort is still M (8) + L (25) = 33
-    expect(updated.totalEffortDays).toBe(33);
+    // total effort is still M (1.5) + L (3) = 4.5
+    expect(updated.totalEffortDays).toBe(4.5);
   });
 
-  it("updates milestone risk when total effort exceeds 250 days", () => {
+  it("updates milestone risk when total effort exceeds 25 days", () => {
     const heavyPlan: MigrationPlan = {
       ...samplePlan,
       waves: [
@@ -110,7 +110,7 @@ describe("planCalculations", () => {
               currentAlgorithm: "RSA-4096",
               targetAlgorithm: "ML-KEM-1024",
               approach: "re-architect",
-              effort: "XL", // 60
+              effort: "XL", // 6
               severity: "critical",
               rationale: "Core",
               dependsOn: [],
@@ -124,7 +124,7 @@ describe("planCalculations", () => {
               currentAlgorithm: "RSA-4096",
               targetAlgorithm: "ML-KEM-1024",
               approach: "re-architect",
-              effort: "XL", // 60
+              effort: "XL", // 6
               severity: "critical",
               rationale: "Core",
               dependsOn: [],
@@ -138,7 +138,7 @@ describe("planCalculations", () => {
               currentAlgorithm: "RSA-4096",
               targetAlgorithm: "ML-KEM-1024",
               approach: "re-architect",
-              effort: "XL", // 60
+              effort: "XL", // 6
               severity: "critical",
               rationale: "Core",
               dependsOn: [],
@@ -152,7 +152,7 @@ describe("planCalculations", () => {
               currentAlgorithm: "RSA-4096",
               targetAlgorithm: "ML-KEM-1024",
               approach: "re-architect",
-              effort: "XL", // 60
+              effort: "XL", // 6
               severity: "critical",
               rationale: "Core",
               dependsOn: [],
@@ -166,7 +166,7 @@ describe("planCalculations", () => {
               currentAlgorithm: "RSA-4096",
               targetAlgorithm: "ML-KEM-1024",
               approach: "re-architect",
-              effort: "XL", // 60 (total 300 > 250)
+              effort: "XL", // 6 (total 30 > 25)
               severity: "critical",
               rationale: "Core",
               dependsOn: [],
@@ -183,7 +183,7 @@ describe("planCalculations", () => {
           actions: [],
         },
       ],
-      totalEffortDays: 300,
+      totalEffortDays: 30,
       milestoneRisks: [
         {
           milestoneId: "deprecation-2030",
@@ -194,10 +194,10 @@ describe("planCalculations", () => {
     };
 
     const updated = moveMigrationAction(heavyPlan, "act-xl5", "wave-2");
-    expect(updated.totalEffortDays).toBe(300);
+    expect(updated.totalEffortDays).toBe(30);
     const deprecationRisk = updated.milestoneRisks.find((r) => r.milestoneId === "deprecation-2030")!;
     expect(deprecationRisk.atRisk).toBe(true);
-    expect(deprecationRisk.reason).toContain("Estimated 300 engineer-days");
+    expect(deprecationRisk.reason).toContain("Estimated ~30 days");
   });
 
   it("throws an error when action ID is not found in plan", () => {

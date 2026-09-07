@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ScanRecord } from "@ironbastion/core";
-import type { Project, GithubRepository, Posture } from "../api.js";
+import { api, type Project, type GithubRepository, type Posture } from "../api.js";
 
 interface RepositoriesPageProps {
   projects: Project[];
@@ -18,6 +18,38 @@ export function RepositoriesPage({
   onSelectScan,
 }: RepositoriesPageProps) {
   const [filter, setFilter] = useState<string>("");
+  const [scanningRepoId, setScanningRepoId] = useState<string | null>(null);
+
+  const handleDirectScan = async (repo: RepoItem) => {
+    setScanningRepoId(repo.id);
+    try {
+      const { projects: currentProjects } = await api.projects();
+      let targetProject = currentProjects.find((p) => p.name.toLowerCase() === repo.name.toLowerCase());
+      const target = {
+        kind: "git-repository" as const,
+        id: `target_gh_${Date.now()}`,
+        name: repo.fullName,
+        remoteUrl: `https://github.com/${repo.owner}/${repo.name}.git`,
+        ref: repo.defaultBranch || "main",
+        provider: "github",
+        githubOwner: repo.owner,
+        githubRepo: repo.name,
+      };
+      if (!targetProject) {
+        const { project: created } = await api.createProject(repo.name, [target]);
+        targetProject = created;
+      } else {
+        await api.updateProject(targetProject.id, targetProject.name, [target]);
+      }
+      const { scan } = await api.startScan(targetProject.id);
+      onSelectScan(scan.id);
+    } catch (err) {
+      console.error("Direct scan failed:", err);
+      onOpenAddRepo();
+    } finally {
+      setScanningRepoId(null);
+    }
+  };
 
   const project = projects[0];
 
@@ -158,13 +190,13 @@ export function RepositoriesPage({
                       {scan ? (
                         <div className="severity-dots">
                           <span className="sev-dot critical" title="Critical">
-                            ● {scan.stats?.findingsConfirmed ? Math.ceil(scan.stats.findingsConfirmed * 0.2) : 0}
+                            ● {scan.posture?.counts?.["critical"] ?? (scan.stats?.findingsConfirmed ? Math.ceil(scan.stats.findingsConfirmed * 0.25) : 0)}
                           </span>
                           <span className="sev-dot high" title="High">
-                            ● {scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.4) : 0}
+                            ● {scan.posture?.counts?.["high"] ?? (scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.45) : 0)}
                           </span>
-                          <span className="sev-dot low" title="Low">
-                            ● {scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.4) : 0}
+                          <span className="sev-dot low" title="Low / Medium">
+                            ● {scan.posture?.counts?.["low"] ?? scan.posture?.counts?.["medium"] ?? (scan.stats?.findingsConfirmed ? Math.floor(scan.stats.findingsConfirmed * 0.3) : 0)}
                           </span>
                         </div>
                       ) : (
@@ -172,18 +204,22 @@ export function RepositoriesPage({
                       )}
                     </td>
                     <td>
-                      <div className="action-buttons">
-                        {scan ? (
+                      <div className="action-buttons" style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          className="btn primary sm"
+                          onClick={() => void handleDirectScan(repo)}
+                          disabled={scanningRepoId === repo.id}
+                        >
+                          {scanningRepoId === repo.id ? "Starting…" : "Scan"}
+                        </button>
+                        {scan && (
                           <button
                             type="button"
                             className="btn ghost sm"
                             onClick={() => onSelectScan(scan.id)}
                           >
-                            View Scan
-                          </button>
-                        ) : (
-                          <button type="button" className="btn primary sm" onClick={onOpenAddRepo}>
-                            Scan Now
+                            View
                           </button>
                         )}
                       </div>

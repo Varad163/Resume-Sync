@@ -79,7 +79,7 @@ How to sequence:
 - Group findings that are genuinely one piece of work into one action. Do not emit one action per line of code.
 - Aim each wave at one of the public milestones you are given.
 
-Effort sizes: S is about two days, M about eight, L about twenty-five, XL about sixty. Judge from the approach and the number of call sites, and be honest — a plan nobody can staff is not a plan.
+Effort sizes (assuming AI-assisted development and automated tooling): S is about half a day (0.5d), M about one to two days (1.5d), L about three days (3d), XL about six days (6d). Judge from the approach and the number of call sites, and be honest — a plan nobody can staff is not a plan.
 
 Approaches:
 - "drop-in": swap the algorithm behind an existing interface.

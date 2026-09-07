@@ -129,8 +129,8 @@ export function renderHtmlReport(input: ReportInput): string {
     </div>
     <div class="cell">
       <div class="label">Effort</div>
-      <div class="value">${plan?.totalEffortDays ?? 0}</div>
-      <div class="note">engineer-days planned</div>
+      <div class="value">~${plan?.totalEffortDays ?? 0}</div>
+      <div class="note">days estimated</div>
     </div>
   </div>
 

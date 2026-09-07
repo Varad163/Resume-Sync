@@ -1,6 +1,6 @@
 import type { MigrationAction, MigrationPlan } from "@ironbastion/core";
 
-export const EFFORT_DAYS = { S: 2, M: 8, L: 25, XL: 60 } as const;
+export const EFFORT_DAYS = { S: 0.5, M: 1.5, L: 3, XL: 6 } as const;
 
 export function moveMigrationAction(
   plan: MigrationPlan,
@@ -41,17 +41,20 @@ export function moveMigrationAction(
   });
 
   const allActions = newWaves.flatMap((w) => w.actions);
-  const totalEffortDays = allActions.reduce(
-    (sum, a) => sum + EFFORT_DAYS[a.effort as keyof typeof EFFORT_DAYS],
-    0,
-  );
+  const totalEffortDays =
+    Math.round(
+      allActions.reduce(
+        (sum, a) => sum + EFFORT_DAYS[a.effort as keyof typeof EFFORT_DAYS],
+        0,
+      ) * 10,
+    ) / 10;
 
   const milestoneRisks = plan.milestoneRisks.map((risk) => {
     if (risk.milestoneId === "deprecation-2030") {
       return {
         ...risk,
-        atRisk: totalEffortDays > 250,
-        reason: `Estimated ${totalEffortDays} engineer-days against the 2030 deprecation milestone.`,
+        atRisk: totalEffortDays > 25,
+        reason: `Estimated ~${totalEffortDays} days against the 2030 deprecation milestone.`,
       };
     }
     return risk;

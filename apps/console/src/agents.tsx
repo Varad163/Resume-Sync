@@ -10,7 +10,7 @@
 import { useState } from "react";
 import type { AgentTrace, CollectorRun } from "./api.js";
 
-interface AgentSpec {
+export interface AgentSpec {
   readonly id: string;
   readonly codename: string;
   readonly discipline: string;
@@ -21,7 +21,7 @@ interface AgentSpec {
 }
 
 /** The roster the marketing site describes, with build status told honestly. */
-const ROSTER: readonly AgentSpec[] = [
+export const ROSTER: readonly AgentSpec[] = [
   {
     id: "sentinel",
     codename: "SENTINEL",
@@ -114,7 +114,61 @@ const ROSTER: readonly AgentSpec[] = [
   },
 ];
 
-const PHASES = ["DISCOVER", "ANALYZE", "PLAN", "REPORT"] as const;
+const PHASES = ["DISCOVER", "ANALYZE", "PLAN", "TEST", "VALIDATE", "REPORT", "MONITOR"] as const;
+
+const AGENT_CATEGORIES = [
+  {
+    key: "ANALYZE",
+    title: "Analysis Agents",
+    subtitle: "Verify code context, eliminate false positives, and assess quantum exposure risks.",
+    agentIds: ["sentinel", "oracle"],
+  },
+  {
+    key: "PLAN",
+    title: "Planning Agents",
+    subtitle: "Assemble cryptographic bill of materials and sequence remediation into migration waves.",
+    agentIds: ["atlas", "migrate"],
+  },
+  {
+    key: "TEST",
+    title: "Testing & Validation Agents",
+    subtitle: "Validate implementation correctness, side-channel leakage, and fault injection tolerance.",
+    agentIds: ["forge", "spectra", "vanguard", "sentinel-ot"],
+  },
+  {
+    key: "ASSURANCE",
+    title: "Assurance & Monitoring Agents",
+    subtitle: "Package auditable compliance evidence and track continuous post-migration posture.",
+    agentIds: ["certify", "watchtower"],
+  },
+];
+
+function getAgentIcon(id: string): string {
+  switch (id.toLowerCase()) {
+    case "sentinel":
+      return "🔍";
+    case "oracle":
+      return "🔮";
+    case "atlas":
+      return "🗺️";
+    case "migrate":
+      return "🚀";
+    case "forge":
+      return "🧪";
+    case "spectra":
+      return "⚡";
+    case "vanguard":
+      return "🎯";
+    case "sentinel-ot":
+      return "🏭";
+    case "certify":
+      return "📜";
+    case "watchtower":
+      return "👁️";
+    default:
+      return "🤖";
+  }
+}
 
 export function AgentsView({
   traces,
@@ -125,15 +179,6 @@ export function AgentsView({
 }) {
   const [open, setOpen] = useState<string>();
 
-  if (traces.length === 0 && collectorRuns.length === 0) {
-    return (
-      <div className="empty">
-        <h3>No agent activity recorded</h3>
-        <p>Agent activity appears here once a scan has run.</p>
-      </div>
-    );
-  }
-
   const byAgent = new Map<string, AgentTrace[]>();
   for (const trace of traces) {
     const bucket = byAgent.get(trace.agentId);
@@ -143,122 +188,213 @@ export function AgentsView({
 
   const modelsUsed = [...new Set(traces.map((t) => t.model))];
   const simulated = modelsUsed.some((m) => m.startsWith("simulated"));
-  const ruleOnly = modelsUsed.every((m) => m.startsWith("deterministic"));
+  const ruleOnly = modelsUsed.length === 0 || modelsUsed.every((m) => m.startsWith("deterministic"));
+
+  // Metrics based on REAL data
+  const totalAgents = ROSTER.length;
+  const activeRanAgents = ROSTER.filter((s) => (byAgent.get(s.id)?.length ?? 0) > 0).length;
+  const builtNotRunAgents = ROSTER.filter((s) => s.built && (byAgent.get(s.id)?.length ?? 0) === 0).length;
+  const notBuiltAgents = ROSTER.filter((s) => !s.built).length;
 
   return (
-    <>
+    <div className="agents-page-wrapper">
+      {/* Page Header */}
+      <div className="agents-header-bar">
+        <div>
+          <h2 className="agents-title">Security Analysis Agents</h2>
+          <p className="agents-subtitle">
+            Autonomous agentic pipeline used to discover, analyze, inventory, and sequence PQC remediation for your codebase.
+          </p>
+        </div>
+      </div>
+
+      {/* Summary Stat Cards */}
+      <div className="agents-summary-grid">
+        <div className="agent-summary-card">
+          <div className="card-label">Total Roster Agents</div>
+          <div className="card-value blue">{totalAgents}</div>
+          <div className="card-sub">Defined security roster</div>
+        </div>
+        <div className="agent-summary-card">
+          <div className="card-label">Active / Executed</div>
+          <div className="card-value green">{activeRanAgents}</div>
+          <div className="card-sub">Completed for this scan</div>
+        </div>
+        <div className="agent-summary-card">
+          <div className="card-label">Not Run</div>
+          <div className="card-value yellow">{builtNotRunAgents}</div>
+          <div className="card-sub">Built but idle for target</div>
+        </div>
+        <div className="agent-summary-card">
+          <div className="card-label">Not Available</div>
+          <div className="card-value gray">{notBuiltAgents}</div>
+          <div className="card-sub">Roadmap bench operations</div>
+        </div>
+      </div>
+
+      {/* AI Model / Rule Mode Banner */}
       {ruleOnly ? (
-        <div className="banner">
-          <b>No model configured</b>
-          Every decision below was made by rules, not by a model. Set
-          ANTHROPIC_AWS_WORKSPACE_ID and AWS_REGION, or ANTHROPIC_API_KEY, and the same
-          agents run on Claude with their reasoning recorded here.
+        <div className="banner info-banner-styled" style={{ marginBottom: 24 }}>
+          <div className="banner-icon-box">ℹ</div>
+          <div>
+            <div className="banner-head">Rule-based deterministic mode active</div>
+            <div className="banner-text">
+              Every decision for this scan was produced by deterministic rule evaluation. No external LLM model was configured. Set <code className="mono-code">ANTHROPIC_AWS_WORKSPACE_ID</code> and <code className="mono-code">AWS_REGION</code>, or <code className="mono-code">ANTHROPIC_API_KEY</code> to enable Claude reasoning.
+            </div>
+          </div>
         </div>
       ) : simulated ? (
-        <div className="banner">
-          <b>Simulated reasoning</b>
-          The agent loop, the read-only tools, schema validation and this trace are all
-          real. The reasoning is simulated because no model credential is configured, and
-          every decision is stamped <span className="mono">simulated-agent</span>.
+        <div className="banner warning-banner-styled" style={{ marginBottom: 24 }}>
+          <div className="banner-icon-box">⚡</div>
+          <div>
+            <div className="banner-head">Simulated agent reasoning active</div>
+            <div className="banner-text">
+              The agent control loop, tool executions, and schema validations are live. Reasoning steps are simulated because no model credential is provided (<code className="mono-code">simulated-agent</code>).
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {/* The pipeline, as it actually ran. */}
-      <div className="pipeline">
-        {PHASES.map((phase) => {
-          const collectors = phase === "DISCOVER" ? collectorRuns : [];
-          const agents = ROSTER.filter(
-            (spec) => spec.built && byAgent.has(spec.id) && byAgent.get(spec.id)![0]!.phase === phase,
-          );
-          return (
-            <div className="stage" key={phase}>
-              <div className="label">{phase}</div>
-              {collectors.map((run) => (
-                <div className="node collector" key={run.collectorId + run.target}>
-                  <div className="mono name">{run.collectorId}</div>
-                  <div className="sub">
-                    {run.candidates} candidates · {run.unitsScanned} units
+      {/* Visual Pipeline Sequence */}
+      <div className="agents-pipeline-card">
+        <h3 className="section-card-title">Agent Execution Pipeline</h3>
+        <div className="pipeline-flow-wrapper">
+          {PHASES.map((phase, idx) => {
+            const collectors = phase === "DISCOVER" ? collectorRuns : [];
+            const agents = ROSTER.filter(
+              (spec) => spec.built && spec.phase === phase
+            );
+            return (
+              <div key={phase} className="pipeline-stage-group">
+                <div className="stage-card">
+                  <div className="stage-badge">{phase}</div>
+                  <div className="stage-nodes-container">
+                    {collectors.map((run) => (
+                      <div className="node-chip collector-chip" key={run.collectorId + run.target}>
+                        <div className="chip-name">{run.collectorId}</div>
+                        <div className="chip-meta">
+                          {run.candidates} candidates · {run.unitsScanned} units
+                        </div>
+                      </div>
+                    ))}
+                    {agents.map((spec) => {
+                      const runs = byAgent.get(spec.id) ?? [];
+                      const ran = runs.length > 0;
+                      return (
+                        <div
+                          key={spec.id}
+                          className={`node-chip agent-chip ${ran ? "active-run" : "idle-run"}`}
+                          onClick={() => setOpen(open === spec.id ? undefined : spec.id)}
+                        >
+                          <div className="chip-name">
+                            {getAgentIcon(spec.id)} {spec.codename}
+                          </div>
+                          <div className="chip-meta">
+                            {ran ? `${runs.reduce((s, r) => s + r.decisions.length, 0)} decisions` : "Not Run"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {phase === "REPORT" ? (
+                      <div className="node-chip collector-chip">
+                        <div className="chip-name">REPORT</div>
+                        <div className="chip-meta">CBOM & Plan Report</div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              ))}
-              {agents.map((spec) => {
-                const runs = byAgent.get(spec.id)!;
-                const tools = runs.reduce((sum, run) => sum + run.toolCalls.length, 0);
-                return (
-                  <button
-                    type="button"
-                    className="node agent"
-                    key={spec.id}
-                    onClick={() => setOpen(open === spec.id ? undefined : spec.id)}
-                  >
-                    <div className="mono name">{spec.codename}</div>
-                    <div className="sub">
-                      {runs.reduce((sum, run) => sum + run.decisions.length, 0)} decisions
-                      {tools > 0 ? ` · ${tools} tool calls` : ""}
-                    </div>
-                  </button>
-                );
-              })}
-              {phase === "REPORT" ? (
-                <div className="node collector">
-                  <div className="mono name">report</div>
-                  <div className="sub">CBOM, plan, assurance report</div>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+                {idx < PHASES.length - 1 && <div className="pipeline-arrow">→</div>}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Collectors: the deterministic half of the pipeline. */}
-      <h3 className="label sectionhead">Discovery — deterministic collectors</h3>
-      <table className="data">
-        <thead>
-          <tr>
-            <th style={{ width: 150 }}>Collector</th>
-            <th>Target</th>
-            <th style={{ width: 110 }}>Scanned</th>
-            <th style={{ width: 110 }}>Candidates</th>
-            <th style={{ width: 90 }}>Time</th>
-          </tr>
-        </thead>
-        <tbody>
-          {collectorRuns.map((run) => (
-            <tr key={run.collectorId + run.target}>
-              <td className="mono" style={{ color: "var(--display)" }}>
-                {run.collectorId} <span style={{ color: "var(--tick)" }}>v{run.version}</span>
-              </td>
-              <td>
-                {run.target}
-                {run.notes.length > 0 ? (
-                  <div className="where">{run.notes.slice(0, 2).join(" · ")}</div>
-                ) : null}
-              </td>
-              <td className="mono">{run.unitsScanned}</td>
-              <td className="mono">{run.candidates}</td>
-              <td className="mono" style={{ color: "var(--muted)" }}>
-                {run.durationMs}ms
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Discovery Results - Deterministic Collectors Table */}
+      {collectorRuns.length > 0 && (
+        <div className="agents-collectors-card">
+          <div className="card-header-bar">
+            <h3 className="section-card-title">Discovery Results — Deterministic Collectors</h3>
+            <span className="badge-gray">{collectorRuns.length} collectors executed</span>
+          </div>
 
-      {/* Agents: the reasoning half. */}
-      <h3 className="label sectionhead">Agents</h3>
-      {ROSTER.map((spec) => {
-        const runs = byAgent.get(spec.id) ?? [];
+          <div className="card-table-wrapper">
+            <table className="custom-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "20%" }}>Collector</th>
+                  <th style={{ width: "35%" }}>Target</th>
+                  <th style={{ width: "15%" }}>Scanned Units</th>
+                  <th style={{ width: "15%" }}>Candidates Found</th>
+                  <th style={{ width: "15%" }}>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {collectorRuns.map((run) => (
+                  <tr key={run.collectorId + run.target}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: "#f8fafc" }}>
+                        {run.collectorId}{" "}
+                        <span className="mono-tag" style={{ fontSize: "0.75rem", color: "#818cf8" }}>
+                          v{run.version}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="text-muted" style={{ fontSize: "0.85rem", fontFamily: "monospace" }}>
+                      {run.target}
+                      {run.notes.length > 0 ? (
+                        <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 2 }}>
+                          {run.notes.slice(0, 2).join(" · ")}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <span className="mono-tag">{run.unitsScanned}</span>
+                    </td>
+                    <td>
+                      <span className={`mono-tag ${run.candidates > 0 ? "highlight" : ""}`}>
+                        {run.candidates}
+                      </span>
+                    </td>
+                    <td className="text-muted">{run.durationMs}ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped Agent Roster Cards */}
+      {AGENT_CATEGORIES.map((category) => {
+        const categoryAgents = ROSTER.filter((s) => category.agentIds.includes(s.id));
+        if (categoryAgents.length === 0) return null;
+
         return (
-          <AgentCard
-            key={spec.id}
-            spec={spec}
-            runs={runs}
-            open={open === spec.id}
-            onToggle={() => setOpen(open === spec.id ? undefined : spec.id)}
-          />
+          <div key={category.key} className="agent-category-block">
+            <div className="category-header">
+              <h3 className="category-title">{category.title}</h3>
+              <p className="category-subtitle">{category.subtitle}</p>
+            </div>
+
+            <div className="agents-grid">
+              {categoryAgents.map((spec) => {
+                const runs = byAgent.get(spec.id) ?? [];
+                return (
+                  <AgentCard
+                    key={spec.id}
+                    spec={spec}
+                    runs={runs}
+                    open={open === spec.id}
+                    onToggle={() => setOpen(open === spec.id ? undefined : spec.id)}
+                  />
+                );
+              })}
+            </div>
+          </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
@@ -291,170 +427,194 @@ function AgentCard({
   const bySimulation = model.startsWith("simulated");
 
   return (
-    <section className={`agentcard ${spec.built ? "" : "planned"}`}>
-      <header>
-        <button type="button" onClick={onToggle} disabled={!ran} className="agenthead">
+    <div className={`professional-agent-card ${spec.built ? "" : "not-built-card"}`}>
+      <div className="card-top-row">
+        <div className="agent-identity">
+          <span className="agent-avatar-icon">{getAgentIcon(spec.id)}</span>
           <div>
-            <span className="mono codename">{spec.codename}</span>
-            <span className="discipline">{spec.discipline}</span>
+            <h4 className="agent-codename">{spec.codename}</h4>
+            <span className="agent-discipline-text">{spec.discipline}</span>
           </div>
-          <div className="status">
-            {!spec.built ? (
-              <span className="tag planned">not built</span>
-            ) : !ran ? (
-              <span className="tag idle">did not run</span>
-            ) : byRules ? (
-              <span className="tag rules">rules</span>
-            ) : bySimulation ? (
-              <span className="tag sim">simulated</span>
-            ) : (
-              <span className="tag model">{model}</span>
-            )}
-          </div>
-        </button>
-      </header>
+        </div>
 
-      <div className="mission">{spec.mission}</div>
-      {spec.note ? <div className="note planned-note">{spec.note}</div> : null}
+        <div className="agent-status-badge-container">
+          {!spec.built ? (
+            <span className="agent-badge not-built">Not Built</span>
+          ) : !ran ? (
+            <span className="agent-badge not-run">Not Run</span>
+          ) : byRules ? (
+            <span className="agent-badge rules">Rules</span>
+          ) : bySimulation ? (
+            <span className="agent-badge sim">Simulated</span>
+          ) : (
+            <span className="agent-badge active-model">{model}</span>
+          )}
+        </div>
+      </div>
+
+      <p className="agent-mission-description">{spec.mission}</p>
+
+      {spec.note && (
+        <div className="agent-note-box">
+          <span className="note-label">Note:</span> {spec.note}
+        </div>
+      )}
 
       {ran ? (
-        <>
-          <div className="agentstats">
-            <span>
+        <div className="agent-execution-footer">
+          <div className="agent-stats-metrics">
+            <div className="stat-pill">
               <b>{totals.decisions}</b> decisions
-            </span>
-            <span>
-              <b>{runs.length}</b> run{runs.length === 1 ? "" : "s"}
-            </span>
-            <span>
+            </div>
+            <div className="stat-pill">
+              <b>{runs.length}</b> {runs.length === 1 ? "run" : "runs"}
+            </div>
+            <div className="stat-pill">
               <b>{totals.turns}</b> turns
-            </span>
-            <span>
+            </div>
+            <div className="stat-pill">
               <b>{totals.tools}</b> tool calls
-            </span>
-            <span>
-              <b>{totals.inputTokens.toLocaleString()}</b> in /{" "}
-              <b>{totals.outputTokens.toLocaleString()}</b> out
-            </span>
-            <span>
-              <b>${(totals.costCents / 100).toFixed(4)}</b>
-            </span>
-            <span>
+            </div>
+            <div className="stat-pill">
               <b>{totals.durationMs}</b>ms
-            </span>
+            </div>
           </div>
 
-          {open ? <AgentDetail runs={runs} /> : null}
-        </>
-      ) : null}
-    </section>
+          <button type="button" className="btn ghost sm toggle-details-btn" onClick={onToggle}>
+            {open ? "Hide Details ▲" : "View Details ▼"}
+          </button>
+        </div>
+      ) : (
+        <div className="agent-idle-footer">
+          <span className="text-dim" style={{ fontSize: "0.8rem" }}>
+            {!spec.built
+              ? "This agent is part of the IronBastion roadmap."
+              : "Agent did not execute for the target repository."}
+          </span>
+        </div>
+      )}
+
+      {open && ran ? <AgentDetail runs={runs} /> : null}
+    </div>
   );
 }
 
 function AgentDetail({ runs }: { runs: AgentTrace[] }) {
   return (
-    <div className="agentdetail">
+    <div className="agent-detail-drawer">
       {runs.map((run, index) => (
-        <div key={`${run.agentId}-${index}`}>
-          <h4>Task given</h4>
-          <p className="mono small">{run.task}</p>
+        <div key={`${run.agentId}-${index}`} className="run-detail-block">
+          <div className="detail-section-title">Task Specification</div>
+          <div className="task-box mono">{run.task}</div>
 
           {run.toolCalls.length > 0 ? (
             <>
-              <h4>What it looked at</h4>
-              <table className="data compact">
-                <thead>
-                  <tr>
-                    <th style={{ width: 130 }}>Tool</th>
-                    <th style={{ width: 230 }}>Arguments</th>
-                    <th>What came back</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {run.toolCalls.map((call, i) => (
-                    <tr key={i}>
-                      <td className="mono" style={{ color: call.failed ? "var(--critical)" : "var(--quantum)" }}>
-                        {call.tool}
-                      </td>
-                      <td className="mono small">{JSON.stringify(call.input)}</td>
-                      <td className="small" style={{ color: "var(--muted)" }}>
-                        {call.resultPreview}
-                        <div className="where">
-                          {call.resultBytes} bytes · {call.durationMs}ms
-                        </div>
-                      </td>
+              <div className="detail-section-title" style={{ marginTop: 16 }}>
+                Tool Invocations ({run.toolCalls.length})
+              </div>
+              <div className="card-table-wrapper" style={{ marginBottom: 16 }}>
+                <table className="custom-table compact">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 130 }}>Tool</th>
+                      <th style={{ width: 220 }}>Arguments</th>
+                      <th>Output Preview</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {run.toolCalls.map((call, i) => (
+                      <tr key={i}>
+                        <td className="mono" style={{ color: call.failed ? "#ef4444" : "#818cf8", fontWeight: 600 }}>
+                          {call.tool}
+                        </td>
+                        <td className="mono small" style={{ fontSize: "0.75rem" }}>
+                          {JSON.stringify(call.input)}
+                        </td>
+                        <td className="small" style={{ color: "#94a3b8", fontSize: "0.75rem" }}>
+                          {call.resultPreview}
+                          <div style={{ color: "#64748b", fontSize: "0.7rem", marginTop: 2 }}>
+                            {call.resultBytes} bytes · {call.durationMs}ms
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           ) : null}
 
           {run.turns.length > 0 ? (
             <>
-              <h4>Turns</h4>
-              <table className="data compact">
-                <thead>
-                  <tr>
-                    <th style={{ width: 44 }}>#</th>
-                    <th>What it said</th>
-                    <th style={{ width: 150 }}>Tools called</th>
-                    <th style={{ width: 130 }}>Tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {run.turns.map((turn, i) => (
-                    <tr key={i}>
-                      <td className="mono">{turn.turn}</td>
-                      <td className="small">
-                        {turn.rejection ? (
-                          <span style={{ color: "var(--legacy)" }}>
-                            submission rejected: {turn.rejection}
-                          </span>
-                        ) : (
-                          turn.text || <span style={{ color: "var(--tick)" }}>—</span>
-                        )}
-                      </td>
-                      <td className="mono small">{turn.toolNames.join(", ") || "—"}</td>
-                      <td className="mono small">
-                        {turn.inputTokens.toLocaleString()} / {turn.outputTokens.toLocaleString()}
-                      </td>
+              <div className="detail-section-title">Reasoning Turns ({run.turns.length})</div>
+              <div className="card-table-wrapper" style={{ marginBottom: 16 }}>
+                <table className="custom-table compact">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 44 }}>#</th>
+                      <th>Reasoning / Output</th>
+                      <th style={{ width: 150 }}>Tools Called</th>
+                      <th style={{ width: 120 }}>Tokens</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {run.turns.map((turn, i) => (
+                      <tr key={i}>
+                        <td className="mono">{turn.turn}</td>
+                        <td className="small" style={{ fontSize: "0.8rem" }}>
+                          {turn.rejection ? (
+                            <span style={{ color: "#ef4444" }}>
+                              submission rejected: {turn.rejection}
+                            </span>
+                          ) : (
+                            turn.text || <span style={{ color: "#10b981" }}>—</span>
+                          )}
+                        </td>
+                        <td className="mono small" style={{ fontSize: "0.75rem" }}>
+                          {turn.toolNames.join(", ") || "—"}
+                        </td>
+                        <td className="mono small" style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                          {turn.inputTokens.toLocaleString()} in / {turn.outputTokens.toLocaleString()} out
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           ) : null}
 
-          <h4>Decisions</h4>
-          <table className="data compact">
-            <thead>
-              <tr>
-                <th style={{ width: 280 }}>Subject</th>
-                <th style={{ width: 240 }}>Outcome</th>
-                <th style={{ width: 70 }}>Conf.</th>
-                <th>Reasoning</th>
-              </tr>
-            </thead>
-            <tbody>
-              {run.decisions.map((decision, i) => (
-                <tr key={i}>
-                  <td className="small" style={{ color: "var(--display)" }}>
-                    {decision.subject}
-                  </td>
-                  <td className="mono small" style={{ color: "var(--quantum)" }}>
-                    {decision.outcome}
-                  </td>
-                  <td className="mono small">
-                    {decision.confidence === undefined ? "—" : decision.confidence.toFixed(2)}
-                  </td>
-                  <td className="small" style={{ color: "var(--muted)" }}>
-                    {decision.rationale}
-                  </td>
+          <div className="detail-section-title">Agent Decisions ({run.decisions.length})</div>
+          <div className="card-table-wrapper">
+            <table className="custom-table compact">
+              <thead>
+                <tr>
+                  <th style={{ width: "30%" }}>Subject</th>
+                  <th style={{ width: "25%" }}>Outcome</th>
+                  <th style={{ width: "10%" }}>Confidence</th>
+                  <th style={{ width: "35%" }}>Rationale</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {run.decisions.map((decision, i) => (
+                  <tr key={i}>
+                    <td className="small" style={{ fontWeight: 600, color: "#f8fafc" }}>
+                      {decision.subject}
+                    </td>
+                    <td className="mono small" style={{ color: "#818cf8", fontWeight: 600 }}>
+                      {decision.outcome}
+                    </td>
+                    <td className="mono small">
+                      {decision.confidence === undefined ? "—" : decision.confidence.toFixed(2)}
+                    </td>
+                    <td className="small" style={{ color: "#94a3b8", fontSize: "0.8rem" }}>
+                      {decision.rationale}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
     </div>

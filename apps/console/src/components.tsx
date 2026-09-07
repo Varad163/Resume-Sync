@@ -3,16 +3,27 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { Finding } from "@ironbastion/core";
 
-export function Readout({ items }: { items: { label: string; value: ReactNode; sub?: string; tone?: string }[] }) {
+export function Readout({
+  items,
+}: {
+  items: { label: string; value: ReactNode; sub?: string; tone?: string; icon?: ReactNode; onClick?: () => void }[];
+}) {
   return (
-    <div className="readout">
+    <div className="report-summary-grid">
       {items.map((item) => (
-        <div key={item.label}>
-          <div className="label">{item.label}</div>
-          <div className="value" style={item.tone ? { color: item.tone } : undefined}>
+        <div
+          key={item.label}
+          className={`summary-card ${item.onClick ? "clickable" : ""}`}
+          onClick={item.onClick}
+        >
+          <div className="summary-card-header">
+            <span className="summary-card-label">{item.label}</span>
+            {item.icon && <span className="summary-card-icon">{item.icon}</span>}
+          </div>
+          <div className="summary-card-value" style={item.tone ? { color: item.tone } : undefined}>
             {item.value}
           </div>
-          {item.sub ? <div className="sub">{item.sub}</div> : null}
+          {item.sub ? <div className="summary-card-sub">{item.sub}</div> : null}
         </div>
       ))}
     </div>
@@ -28,10 +39,7 @@ const QUANTUM_CLASS: Record<string, string> = {
 
 /**
  * The risk spectrum.
- *
- * Every confirmed finding is a tick on a 0-100 scale, coloured by what a
- * quantum computer does to it. It answers the question a severity donut cannot:
- * is this estate a few bad findings, or a wall of them?
+ * Every confirmed finding is a tick on a 0-100 scale.
  */
 export function Spectrum({
   findings,
@@ -43,11 +51,17 @@ export function Spectrum({
   const gridlines = [0, 20, 40, 60, 80, 100];
 
   return (
-    <div className="spectrum">
-      <div className="top">
-        <div className="label">Risk spectrum — {findings.length} confirmed findings</div>
-        <div className="label">0 = no exposure · 100 = broken, reachable, long-lived</div>
+    <div className="spectrum-card">
+      <div className="spectrum-card-header">
+        <div>
+          <h3 className="spectrum-title">Risk Spectrum</h3>
+          <p className="spectrum-subtitle">
+            <b>{findings.length} confirmed findings</b> · Risk distribution across detected cryptographic primitives.
+          </p>
+        </div>
+        <div className="spectrum-scale-hint">0 = no exposure · 100 = broken, reachable, long-lived</div>
       </div>
+
       <div className="track">
         <div className="grid" aria-hidden>
           {gridlines.map((value) => (
@@ -69,7 +83,7 @@ export function Spectrum({
               height: `${28 + (finding.risk.score / 100) * 34}px`,
               animationDelay: `${Math.min(index * 12, 400)}ms`,
             }}
-            title={`${finding.risk.score} — ${finding.title}`}
+            title={`Score: ${finding.risk.score} — ${finding.title}`}
             onClick={() => onSelect(finding.id)}
           >
             <span className="sr-only" style={{ position: "absolute", left: -9999 }}>
@@ -78,18 +92,19 @@ export function Spectrum({
           </button>
         ))}
       </div>
+
       <div className="legend">
         <span>
-          <i style={{ background: "var(--critical)" }} /> broken by Shor
+          <i style={{ background: "var(--critical)" }} /> Broken by Shor
         </span>
         <span>
-          <i style={{ background: "var(--legacy)" }} /> weakened by Grover
+          <i style={{ background: "var(--legacy)" }} /> Weakened by Grover
         </span>
         <span>
-          <i style={{ background: "var(--quantum)" }} /> quantum-safe
+          <i style={{ background: "var(--quantum)" }} /> Quantum-safe
         </span>
         <span>
-          <i style={{ background: "var(--tick)" }} /> unresolved
+          <i style={{ background: "var(--tick)" }} /> Unresolved
         </span>
       </div>
     </div>
@@ -115,10 +130,14 @@ export function FindingsTable({
   );
 
   return (
-    <>
-      <div className="filters">
-        <button type="button" aria-pressed={!severity} onClick={() => setSeverity(undefined)}>
-          all {findings.length}
+    <div className="findings-table-wrapper">
+      <div className="findings-filter-chips">
+        <button
+          type="button"
+          className={`filter-chip ${!severity ? "active" : ""}`}
+          onClick={() => setSeverity(undefined)}
+        >
+          All · {findings.length}
         </button>
         {SEVERITIES.map((level) => {
           const count = findings.filter((f) => f.risk.severity === level).length;
@@ -127,21 +146,22 @@ export function FindingsTable({
             <button
               key={level}
               type="button"
-              aria-pressed={severity === level}
+              className={`filter-chip chip-${level} ${severity === level ? "active" : ""}`}
               onClick={() => setSeverity(severity === level ? undefined : level)}
             >
-              {level} {count}
+              {level.charAt(0).toUpperCase() + level.slice(1)} · {count}
             </button>
           );
         })}
       </div>
 
-      <table className="data">
+      <table className="report-findings-table">
         <thead>
           <tr>
-            <th style={{ width: 56 }}>Risk</th>
-            <th>Finding</th>
-            <th style={{ width: 150 }}>Replacement</th>
+            <th style={{ width: 110 }}>Risk</th>
+            <th>Finding &amp; Location</th>
+            <th style={{ width: 220 }}>Replacement</th>
+            <th style={{ width: 100, textAlign: "right" }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -156,28 +176,55 @@ export function FindingsTable({
             return (
               <Fragment key={finding.id}>
                 <tr
-                  className="row"
+                  className={`finding-row ${isOpen ? "selected" : ""}`}
                   onClick={() => onSelect(isOpen ? undefined : finding.id)}
                 >
-                  <td className={`score sev-${finding.risk.severity}`}>{finding.risk.score}</td>
                   <td>
-                    <div className="title">{finding.title}</div>
-                    <div className="where">{where}</div>
-                    <div className="prov">
-                      found by <b>{finding.provenance.ruleId}</b> · judged by{" "}
+                    <div className={`sev-badge-pill sev-${finding.risk.severity}`}>
+                      <span>{finding.risk.severity.toUpperCase()}</span>
+                      <span className="score-num">{finding.risk.score}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="finding-title-text">{finding.title}</div>
+                    <div className="finding-location-text">{where}</div>
+                    <div className="finding-prov-text">
+                      rule <b>{finding.provenance.ruleId}</b> · judged by{" "}
                       {byRules ? (
-                        <span className="rules">rules, not a model</span>
+                        <span className="rules">rules</span>
                       ) : (
                         <b>{finding.adjudication.provenance.model}</b>
                       )}{" "}
                       · confidence {finding.adjudication.confidence.toFixed(2)}
                     </div>
                   </td>
-                  <td className="arrow">{finding.recommendedAlgorithm ?? "—"}</td>
+                  <td>
+                    {finding.recommendedAlgorithm ? (
+                      <div className="replacement-tag">
+                        <span>{finding.algorithm}</span>
+                        <span className="arrow">→</span>
+                        <span className="target">{finding.recommendedAlgorithm}</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(isOpen ? undefined : finding.id);
+                      }}
+                    >
+                      {isOpen ? "Close" : "View"}
+                    </button>
+                  </td>
                 </tr>
                 {isOpen ? (
-                  <tr className="detail">
-                    <td colSpan={3}>
+                  <tr className="finding-detail-row">
+                    <td colSpan={4}>
                       <FindingDetail finding={finding} />
                     </td>
                   </tr>
@@ -187,7 +234,7 @@ export function FindingsTable({
           })}
         </tbody>
       </table>
-    </>
+    </div>
   );
 }
 
