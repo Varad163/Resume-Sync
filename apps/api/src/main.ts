@@ -10,9 +10,20 @@
 import { createDatabase, migrate, upsertUser, createProject, listProjects } from "@ironbastion/db";
 import { createInProcessQueue, createQueue, executeScan, type Queue } from "@ironbastion/runner";
 import { configuredProvider, createAwsClient, createDirectClient, createSimulatedClient, type ModelClient } from "@ironbastion/agents";
+import fs from "node:fs";
 import path from "node:path";
 import { createAuthenticator } from "./auth.js";
 import { createServer } from "./server.js";
+
+// Load root .env file for local development if available
+try {
+  const envPath = path.resolve(process.cwd(), ".env");
+  if (fs.existsSync(envPath)) {
+    process.loadEnvFile(envPath);
+  }
+} catch {
+  // .env file is optional
+}
 
 const PORT = Number.parseInt(process.env["PORT"] ?? "8787", 10);
 const HOST = process.env["HOST"] ?? "0.0.0.0";

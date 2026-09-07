@@ -867,6 +867,33 @@ describe("github app integration", () => {
     expect(body).toHaveProperty("connected");
   });
 
+  it("generates correct installation URL with slugified app name", async () => {
+    const origId = process.env["GITHUB_APP_ID"];
+    const origKey = process.env["GITHUB_APP_PRIVATE_KEY"];
+    const origName = process.env["GITHUB_APP_NAME"];
+
+    process.env["GITHUB_APP_ID"] = "12345";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0Z...\n-----END RSA PRIVATE KEY-----";
+    process.env["GITHUB_APP_NAME"] = "IronBastion Local";
+
+    try {
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/connect",
+        headers: auth(acme),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.configured).toBe(true);
+      expect(body.url).toContain("https://github.com/apps/ironbastion-local/installations/new?state=");
+    } finally {
+      if (origId !== undefined) process.env["GITHUB_APP_ID"] = origId; else delete process.env["GITHUB_APP_ID"];
+      if (origKey !== undefined) process.env["GITHUB_APP_PRIVATE_KEY"] = origKey; else delete process.env["GITHUB_APP_PRIVATE_KEY"];
+      if (origName !== undefined) process.env["GITHUB_APP_NAME"] = origName; else delete process.env["GITHUB_APP_NAME"];
+    }
+  });
+
   it("rejects invalid state tokens in callback", async () => {
     const res = await app.inject({
       method: "GET",

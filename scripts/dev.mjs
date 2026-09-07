@@ -6,9 +6,22 @@
  * No Docker, no AWS account, no configuration.
  */
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
+
+// Load root .env file for local development if available
+try {
+  const envPath = path.join(repo, ".env");
+  if (fs.existsSync(envPath)) {
+    process.loadEnvFile(envPath);
+  }
+} catch {
+  // .env file is optional
+}
+
 const API_PORT = process.env.PORT ?? "8787";
 const CONSOLE_PORT = "5199";
 
