@@ -11,10 +11,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
-import { generateCertificateKeys } from "@ironbastion/core";
+import { generateCertificateKeys, getKmsPublicKeyPem } from "@ironbastion/core";
 import type { Database } from "@ironbastion/db";
 import type { Queue } from "@ironbastion/runner";
 import { AuthError, type Authenticator, type Principal } from "./auth.js";
+import { validateProductionConfig } from "./config.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerCertifyRoutes } from "./routes/certify.js";
 import { registerForgeRoutes } from "./routes/forge.js";
@@ -28,6 +29,7 @@ export interface ServerDeps {
   readonly db: Database;
   readonly queue: Queue;
   readonly auth: Authenticator;
+  readonly env?: NodeJS.ProcessEnv;
   readonly version?: string;
 }
 
@@ -38,12 +40,14 @@ declare module "fastify" {
 }
 
 export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
+  const config = validateProductionConfig(deps.env);
   const app = Fastify({ logger: false, bodyLimit: 1_000_000 });
 
-  const { privateKey, publicKey } = generateCertificateKeys();
+  const { privateKey, publicKey: localPublicKey } = generateCertificateKeys();
+  const kmsKeyArn = config.kmsCertifyKeyArn;
 
   await app.register(cors, {
-    origin: process.env["CORS_ORIGIN"]?.split(",") ?? true,
+    origin: config.corsOrigin ?? true,
     credentials: true,
   });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
@@ -54,6 +58,15 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
     },
   });
 
+  // Security response headers
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "1; mode=block");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  });
+
   app.get("/health", async () => ({
     status: "ok",
     version: deps.version ?? "0.1.0",
@@ -62,7 +75,15 @@ export async function createServer(deps: ServerDeps): Promise<FastifyInstance> {
   }));
 
   app.get("/v1/certificate-public-key", async () => {
-    return { publicKey };
+    if (kmsKeyArn) {
+      try {
+        const kmsPem = await getKmsPublicKeyPem(kmsKeyArn);
+        return { publicKey: kmsPem, source: "kms" };
+      } catch (err) {
+        app.log.error(`KMS public key fetch failed: ${(err as Error).message}`);
+      }
+    }
+    return { publicKey: localPublicKey, source: "local" };
   });
 
   // Everything below this hook requires a principal.

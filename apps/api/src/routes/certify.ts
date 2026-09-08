@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { CycloneDxBom } from "@ironbastion/cbom";
-import { generateCertificate, isPublished } from "@ironbastion/core";
+import { generateCertificateAsync, isPublished } from "@ironbastion/core";
 import {
   getArtefact,
   getProject,
@@ -21,8 +21,10 @@ function must(request: FastifyRequest): Principal {
 export async function registerCertifyRoutes(
   app: FastifyInstance,
   deps: ServerDeps,
-  privateKey: string,
+  privateKeyPem: string,
 ): Promise<void> {
+  const kmsKeyArn = process.env["CERTIFY_KMS_KEY_ARN"];
+
   const runTx = <T>(request: FastifyRequest, fn: (tx: Database) => Promise<T>): Promise<T> => {
     const principal = must(request);
     return runInTenantTransaction(deps.db, principal.tenantId, fn);
@@ -44,7 +46,7 @@ export async function registerCertifyRoutes(
 
       if (!cbom) return reply.code(400).send({ error: "no CBOM available for this scan" });
 
-      const cert = generateCertificate({
+      const cert = await generateCertificateAsync({
         scanId: id,
         projectName: project?.name ?? scan.projectId,
         projectId: scan.projectId,
@@ -52,7 +54,8 @@ export async function registerCertifyRoutes(
         severity: posture?.severity ?? "informational",
         cbomJson: JSON.stringify(cbom),
         findingsCount: findings.filter(isPublished).length,
-        privateKeyPem: privateKey,
+        privateKeyPem,
+        ...(kmsKeyArn ? { kmsKeyArn } : {}),
       });
 
       return cert;

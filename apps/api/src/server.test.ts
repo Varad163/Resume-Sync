@@ -25,11 +25,13 @@ beforeEach(async () => {
   globex = (await createTenant(db, "Globex")).id;
   enqueued = [];
 
+  const env = { IRONBASTION_AUTH: "dev" } as NodeJS.ProcessEnv;
   const queue = createInProcessQueue((message) => enqueued.push(message));
   app = await createServer({
     db,
     queue,
-    auth: createAuthenticator({ IRONBASTION_AUTH: "dev" } as NodeJS.ProcessEnv),
+    auth: createAuthenticator(env),
+    env,
   });
 });
 

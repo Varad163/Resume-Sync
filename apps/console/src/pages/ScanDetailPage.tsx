@@ -19,6 +19,10 @@ import { Forge } from "../features/forge/components/ForgeTab.js";
 import { Inventory } from "../features/inventory/components/InventoryTab.js";
 import { Plan } from "../features/plan/components/PlanTab.js";
 import { Watchtower } from "../features/watchtower/components/WatchtowerTab.js";
+import {
+  ZeroCryptoEmptyState,
+  NoVulnerableFindingsEmptyState,
+} from "../features/findings/components/ZeroCryptoEmptyState.js";
 
 type Tab = "findings" | "agents" | "inventory" | "plan" | "watchtower" | "forge" | "certify" | "cbom";
 
@@ -222,40 +226,107 @@ export function ScanView({ id, initialTab = "findings", onBack }: { id: string; 
       ) : null}
 
       {/* 5-Card Security Metric Grid */}
-      {posture ? (
-        <Readout
-          items={[
-            {
-              label: "Security Posture",
-              value: `${posture.overall} / 100`,
-              sub: `${posture.severity.toUpperCase()} RISK`,
-              tone: SEVERITY_TONE[posture.severity],
-            },
-            {
-              label: "Critical Findings",
-              value: criticalFindingsCount,
-              sub: "Requires attention",
-              tone: "var(--critical)",
-            },
-            {
-              label: "Total Findings",
-              value: scan.stats.findingsConfirmed,
-              sub: `${scan.stats.needsHuman} awaiting review`,
-            },
-            {
-              label: "Crypto Assets",
-              value: totalAssetsCount,
-              sub: "Click to view Inventory →",
-              onClick: () => setTab("inventory"),
-            },
-            {
-              label: "Remediation Effort",
-              value: `~${plan?.totalEffortDays ?? 0} days`,
-              sub: "AI-assisted estimate",
-            },
-          ]}
-        />
-      ) : null}
+      {(() => {
+        const isCase1ZeroAssets = totalAssetsCount === 0 && scan.status === "succeeded";
+        const isCase2NoVulnerableFindings = totalAssetsCount > 0 && findings.length === 0 && scan.status === "succeeded";
+
+        const readoutItems = isCase1ZeroAssets
+          ? [
+              {
+                label: "Security Posture",
+                value: "N/A",
+                sub: "No cryptographic assets detected",
+                tone: "var(--dim)",
+              },
+              {
+                label: "Critical Findings",
+                value: 0,
+                sub: "No security findings",
+                tone: "var(--dim)",
+              },
+              {
+                label: "Total Findings",
+                value: 0,
+                sub: "No security findings",
+              },
+              {
+                label: "Crypto Assets",
+                value: 0,
+                sub: "No cryptographic usage detected",
+                onClick: () => setTab("inventory"),
+              },
+              {
+                label: "Remediation Effort",
+                value: "0 days",
+                sub: "No remediation required",
+              },
+            ]
+          : isCase2NoVulnerableFindings
+          ? [
+              {
+                label: "Security Posture",
+                value: posture ? `${posture.overall} / 100` : "100 / 100",
+                sub: "No quantum-vulnerable findings",
+                tone: "var(--quantum)",
+              },
+              {
+                label: "Critical Findings",
+                value: 0,
+                sub: "No critical findings",
+                tone: "var(--quantum)",
+              },
+              {
+                label: "Total Findings",
+                value: 0,
+                sub: "No security findings",
+              },
+              {
+                label: "Crypto Assets",
+                value: totalAssetsCount,
+                sub: "Cryptographic usage detected",
+                onClick: () => setTab("inventory"),
+              },
+              {
+                label: "Remediation Effort",
+                value: "0 days",
+                sub: "No remediation required",
+              },
+            ]
+          : posture
+          ? [
+              {
+                label: "Security Posture",
+                value: `${posture.overall} / 100`,
+                sub: `${posture.severity.toUpperCase()} RISK`,
+                tone: SEVERITY_TONE[posture.severity],
+              },
+              {
+                label: "Critical Findings",
+                value: criticalFindingsCount,
+                sub: "Requires attention",
+                tone: "var(--critical)",
+              },
+              {
+                label: "Total Findings",
+                value: scan.stats.findingsConfirmed,
+                sub: `${scan.stats.needsHuman} awaiting review`,
+              },
+              {
+                label: "Crypto Assets",
+                value: totalAssetsCount,
+                sub: "Click to view Inventory →",
+                onClick: () => setTab("inventory"),
+              },
+              {
+                label: "Remediation Effort",
+                value: `~${plan?.totalEffortDays ?? 0} days`,
+                sub: "AI-assisted estimate",
+              },
+            ]
+          : null;
+
+        return readoutItems ? <Readout items={readoutItems} /> : null;
+      })()}
 
       {/* Risk Spectrum Card */}
       {findings.length > 0 ? <Spectrum findings={findings} onSelect={setSelected} /> : null}
@@ -278,13 +349,20 @@ export function ScanView({ id, initialTab = "findings", onBack }: { id: string; 
       </div>
 
       {tab === "findings" ? (
-        findings.length === 0 ? (
-          <Empty title={running ? "Still scanning" : "No findings"}>
-            <p>
-              {running
-                ? "Findings appear here as soon as the campaign finishes adjudicating them."
-                : "Nothing quantum-vulnerable was confirmed in the targets scanned."}
-            </p>
+        running ? (
+          <Empty title="Still scanning">
+            <p>Findings appear here as soon as the campaign finishes adjudicating them.</p>
+          </Empty>
+        ) : totalAssetsCount === 0 && scan.status === "succeeded" ? (
+          <ZeroCryptoEmptyState collectorRuns={collectorRuns} />
+        ) : totalAssetsCount > 0 && findings.length === 0 && scan.status === "succeeded" ? (
+          <NoVulnerableFindingsEmptyState
+            totalAssetsCount={totalAssetsCount}
+            onViewInventory={() => setTab("inventory")}
+          />
+        ) : findings.length === 0 ? (
+          <Empty title="No findings">
+            <p>Nothing quantum-vulnerable was confirmed in the targets scanned.</p>
           </Empty>
         ) : (
           <FindingsTable findings={findings} selected={selected} onSelect={setSelected} />

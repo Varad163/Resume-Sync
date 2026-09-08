@@ -45,6 +45,7 @@
   "dependencies": {
     "@anthropic-ai/aws-sdk": "^0.6.5",
     "@anthropic-ai/sdk": "^0.120.0",
+    "@aws-sdk/client-kms": "^3.1116.0",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@aws-sdk/client-sqs": "^3.1116.0",
     "@electric-sql/pglite": "^0.5.5",
