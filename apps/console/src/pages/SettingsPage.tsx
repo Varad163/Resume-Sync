@@ -112,7 +112,14 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
       const height = 700;
       const left = window.screenX + (window.innerWidth - width) / 2;
       const top = window.screenY + (window.innerHeight - height) / 2;
-      window.open(url, "Connect GitHub", `width=${width},height=${height},left=${left},top=${top}`);
+      const popup = window.open(url, "Connect GitHub", `width=${width},height=${height},left=${left},top=${top}`);
+
+      const timer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(timer);
+          void loadGithubInfo();
+        }
+      }, 1000);
     } catch (cause) {
       setWatchtowerMsg({ type: "error", text: (cause as Error).message });
     } finally {
@@ -242,7 +249,9 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
               <div className="status-item">
                 <span className="lbl">App Connection:</span>
                 <span className="val font-mono">
-                  {githubStatus?.connected ? (
+                  {githubStatus?.error ? (
+                    <span className="badge-red">Connection Error</span>
+                  ) : githubStatus?.connected ? (
                     <span className="badge-green">Connected ✓ ({githubStatus.installation?.accountLogin})</span>
                   ) : (
                     <span className="badge-gray">Not Connected</span>
@@ -250,16 +259,31 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
                 </span>
               </div>
 
+              {githubStatus?.error && (
+                <div className="banner alert-error" style={{ marginTop: 8, marginBottom: 8 }}>
+                  <b>Error: </b>{githubStatus.error}
+                </div>
+              )}
+
               {githubStatus?.connected && (
                 <>
                   <div className="status-item">
                     <span className="lbl">GitHub Account:</span>
-                    <span className="val font-mono">@{githubStatus.installation?.accountLogin}</span>
+                    <span className="val font-mono">@{githubStatus.installation?.accountLogin} ({githubStatus.installation?.accountType})</span>
                   </div>
                   <div className="status-item">
                     <span className="lbl">Authorized Repositories:</span>
                     <span className="val font-mono">{githubRepos.length} repos accessible</span>
                   </div>
+                  {githubRepos.length > 0 && (
+                    <div className="status-item">
+                      <span className="lbl">Connected Repositories:</span>
+                      <span className="val font-mono">
+                        {githubRepos.slice(0, 3).map((r) => r.fullName).join(", ")}
+                        {githubRepos.length > 3 ? ` (+${githubRepos.length - 3} more)` : ""}
+                      </span>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -366,7 +390,9 @@ export function SettingsPage({ projects, onProjectUpdated }: SettingsPageProps) 
               <div className="status-item">
                 <span className="lbl">GitHub Connection Overview:</span>
                 <span className="val font-mono">
-                  {githubStatus?.connected ? (
+                  {githubStatus?.error ? (
+                    <span className="badge-red">Connection Error</span>
+                  ) : githubStatus?.connected ? (
                     <span className="badge-green">
                       Connected ✓ (@{githubStatus.installation?.accountLogin} · {githubRepos.length} repos)
                     </span>

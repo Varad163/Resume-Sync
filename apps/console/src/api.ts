@@ -310,6 +310,7 @@ export interface GithubStatusResponse {
     readonly accountLogin: string;
     readonly accountType: string;
   } | null;
+  readonly error?: string | null;
 }
 
 export interface GithubRepository {

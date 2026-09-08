@@ -8,6 +8,7 @@ import {
   toGithubAppSlug,
   createStateToken,
   verifyStateToken,
+  createAppJwt,
   fetchInstallationDetails,
   listAppInstallations,
   listInstallationRepositories,
@@ -175,39 +176,84 @@ export async function registerGithubIntegrationRoutes(app: FastifyInstance, deps
     const principal = must(request);
     const config = getGithubAppConfigFromEnv();
 
+    if (!config) {
+      return reply.send({
+        configured: false,
+        appName: null,
+        connected: false,
+        installation: null,
+        error: null,
+      });
+    }
+
     let installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
 
-    if (!installation && config) {
+    if (installation) {
+      // Verify existing installation credentials against GitHub API
       try {
-        const installations = await listAppInstallations(config);
-        if (installations.length > 0) {
-          const firstInst = installations[0]!;
-          await runTx(request, async (tx) => {
-            await saveGithubInstallation(tx, principal.tenantId, {
-              githubInstallationId: firstInst.id,
-              accountLogin: firstInst.account.login,
-              accountType: firstInst.account.type,
-            });
-            await recordAudit(tx, {
-              tenantId: principal.tenantId,
-              actor: principal.email ?? "github-auto-sync",
-              action: "github.connect.auto_sync",
-              subject: firstInst.id,
-              detail: { accountLogin: firstInst.account.login, accountType: firstInst.account.type },
-            });
-          });
-          installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
-        }
+        createAppJwt(config);
+        await fetchInstallationDetails(config, installation.githubInstallationId);
+        return reply.send({
+          configured: true,
+          appName: config.appName,
+          connected: true,
+          installation,
+          error: null,
+        });
       } catch (err) {
-        request.log.warn({ err }, "GitHub app installations auto-sync failed");
+        const message = err instanceof Error ? err.message : "GitHub installation validation failed";
+        request.log.warn({ err: message }, "Existing GitHub installation verification failed");
+        return reply.send({
+          configured: true,
+          appName: config.appName,
+          connected: false,
+          installation,
+          error: `Connection Error: ${message}`,
+        });
       }
     }
 
+    // No installation in DB: attempt auto-sync
+    try {
+      createAppJwt(config);
+      const installations = await listAppInstallations(config);
+      if (installations.length > 0) {
+        const firstInst = installations[0]!;
+        await runTx(request, async (tx) => {
+          await saveGithubInstallation(tx, principal.tenantId, {
+            githubInstallationId: firstInst.id,
+            accountLogin: firstInst.account.login,
+            accountType: firstInst.account.type,
+          });
+          await recordAudit(tx, {
+            tenantId: principal.tenantId,
+            actor: principal.email ?? "github-auto-sync",
+            action: "github.connect.auto_sync",
+            subject: firstInst.id,
+            detail: { accountLogin: firstInst.account.login, accountType: firstInst.account.type },
+          });
+        });
+        installation = await runTx(request, (tx) => getGithubInstallation(tx, principal.tenantId));
+        if (installation) {
+          return reply.send({
+            configured: true,
+            appName: config.appName,
+            connected: true,
+            installation,
+            error: null,
+          });
+        }
+      }
+    } catch (err) {
+      request.log.warn({ err }, "GitHub app installations auto-sync skipped or failed");
+    }
+
     return reply.send({
-      configured: Boolean(config),
-      appName: config?.appName ?? null,
-      connected: Boolean(installation),
-      installation: installation ?? null,
+      configured: true,
+      appName: config.appName,
+      connected: false,
+      installation: null,
+      error: null,
     });
   });
 
