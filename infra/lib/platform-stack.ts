@@ -76,6 +76,13 @@ export class PlatformStack extends Stack {
       removalPolicy,
     });
 
+    const certifyKey = new kms.Key(this, "CertifyKey", {
+      keySpec: kms.KeySpec.RSA_2048,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY,
+      description: "IronBastion PQC Certificate RSA Asymmetric Signing Key",
+      removalPolicy,
+    });
+
     const artefacts = new s3.Bucket(this, "Artefacts", {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: key,
@@ -170,6 +177,7 @@ export class PlatformStack extends Stack {
       ARTEFACT_BUCKET: artefacts.bucketName,
       COGNITO_USER_POOL_ID: userPool.userPoolId,
       COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+      CERTIFY_KMS_KEY_ARN: certifyKey.keyArn,
     };
 
     const secrets = {
@@ -282,6 +290,7 @@ export class PlatformStack extends Stack {
       role.addToPrincipalPolicy(claudePolicy);
       artefacts.grantReadWrite(role);
       key.grantEncryptDecrypt(role);
+      certifyKey.grant(role, "kms:Sign", "kms:GetPublicKey");
       database.secret?.grantRead(role);
     }
     scanQueue.grantSendMessages(api.taskDefinition.taskRole);
@@ -342,5 +351,6 @@ export class PlatformStack extends Stack {
     new CfnOutput(this, "ScanQueueUrl", { value: scanQueue.queueUrl });
     new CfnOutput(this, "DatabaseEndpoint", { value: database.clusterEndpoint.hostname });
     new CfnOutput(this, "ArtefactBucket", { value: artefacts.bucketName });
+    new CfnOutput(this, "CertifyKmsKeyArn", { value: certifyKey.keyArn });
   }
 }
