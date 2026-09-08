@@ -10,6 +10,8 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
   const [githubRepos, setGithubRepos] = useState<GithubRepository[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+
+  
   const loadData = useCallback(async () => {
     setError(null);
     try {
@@ -26,6 +28,13 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
 
   useEffect(() => {
     void loadData();
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "IRONBASTION_GITHUB_CONNECTED") {
+        void loadData();
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [loadData]);
 
   const handleConnect = async () => {
@@ -36,7 +45,14 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
       const height = 700;
       const left = window.screenX + (window.innerWidth - width) / 2;
       const top = window.screenY + (window.innerHeight - height) / 2;
-      window.open(url, "Connect GitHub", `width=${width},height=${height},left=${left},top=${top}`);
+      const popup = window.open(url, "Connect GitHub", `width=${width},height=${height},left=${left},top=${top}`);
+
+      const timer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(timer);
+          void loadData();
+        }
+      }, 1000);
     } catch (cause) {
       setError((cause as Error).message);
     }
@@ -61,10 +77,10 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
         </div>
       </header>
 
-      {error && (
+      {(error || githubStatus?.error) && (
         <div className="banner alert-error" style={{ marginBottom: 20 }}>
-          <b>Error</b>
-          {error}
+          <b>Error: </b>
+          {error || githubStatus?.error}
         </div>
       )}
 
@@ -80,7 +96,9 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
               <div className="integration-vendor">Version Control & Repository Provider</div>
             </div>
             <div className="integration-status">
-              {githubStatus?.connected ? (
+              {githubStatus?.error ? (
+                <span className="status-pill status-failed">Connection Error</span>
+              ) : githubStatus?.connected ? (
                 <span className="status-pill status-completed">Connected</span>
               ) : (
                 <span className="status-pill status-pending">Not Connected</span>
@@ -106,6 +124,15 @@ export function IntegrationsPage({ onNavigateDocs }: IntegrationsPageProps) {
                 <span className="lbl">Authorized Repositories:</span>
                 <span className="val font-mono">{githubRepos.length} repositories</span>
               </div>
+              {githubRepos.length > 0 && (
+                <div className="detail-row">
+                  <span className="lbl">Connected Repos:</span>
+                  <span className="val font-mono">
+                    {githubRepos.slice(0, 3).map((r) => r.fullName).join(", ")}
+                    {githubRepos.length > 3 ? ` (+${githubRepos.length - 3} more)` : ""}
+                  </span>
+                </div>
+              )}
             </div>
           ) : null}
 

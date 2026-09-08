@@ -57,7 +57,10 @@ export function getGithubAppConfigFromEnv(env: Record<string, string | undefined
   let privateKey = rawKey.trim();
   if (!privateKey.startsWith("-----BEGIN")) {
     try {
-      privateKey = Buffer.from(privateKey, "base64").toString("utf-8").trim();
+      const decoded = Buffer.from(privateKey, "base64").toString("utf-8").trim();
+      if (decoded.startsWith("-----BEGIN")) {
+        privateKey = decoded;
+      }
     } catch {
       // Use as-is if decoding fails
     }
@@ -96,11 +99,17 @@ export function createAppJwt(config: GithubAppConfig): string {
   const b64Payload = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const unsigned = `${b64Header}.${b64Payload}`;
 
-  const signer = crypto.createSign("RSA-SHA256");
-  signer.update(unsigned);
-  const signature = signer.sign(config.privateKey, "base64url");
-
-  return `${unsigned}.${signature}`;
+  try {
+    const signer = crypto.createSign("RSA-SHA256");
+    signer.update(unsigned);
+    const signature = signer.sign(config.privateKey, "base64url");
+    return `${unsigned}.${signature}`;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Invalid GitHub App RSA Private Key format (${msg}). Ensure GITHUB_APP_PRIVATE_KEY is a valid RSA private key in PEM format.`,
+    );
+  }
 }
 
 /** Creates an HMAC-SHA256 signed CSRF state token encoding the tenant ID. */

@@ -1056,31 +1056,95 @@ describe("github app integration", () => {
   });
 
   it("persists and isolates tenant github installations", async () => {
-    const { saveGithubInstallation } = await import("@ironbastion/db");
-    await saveGithubInstallation(db, acme, {
-      githubInstallationId: "inst_acme_999",
-      accountLogin: "acme-corp",
-      accountType: "Organization",
+    const origId = process.env["GITHUB_APP_ID"];
+    const origKey = process.env["GITHUB_APP_PRIVATE_KEY"];
+
+    const { privateKey } = (await import("node:crypto")).generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
 
-    const acmeStatus = await app.inject({
-      method: "GET",
-      url: "/v1/integrations/github/status",
-      headers: auth(acme),
-    });
-    expect(acmeStatus.statusCode).toBe(200);
-    expect(acmeStatus.json().connected).toBe(true);
-    expect(acmeStatus.json().installation.accountLogin).toBe("acme-corp");
+    process.env["GITHUB_APP_ID"] = "12345";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = privateKey;
 
-    // Verify tenant isolation (Globex should not see Acme installation)
-    const globexStatus = await app.inject({
-      method: "GET",
-      url: "/v1/integrations/github/status",
-      headers: auth(globex),
-    });
-    expect(globexStatus.statusCode).toBe(200);
-    expect(globexStatus.json().connected).toBe(false);
-    expect(globexStatus.json().installation).toBeNull();
+    const origFetch = global.fetch;
+    global.fetch = (async (url: string) => {
+      if (url.includes("/app/installations/inst_acme_999")) {
+        return new Response(
+          JSON.stringify({
+            id: 999,
+            account: { login: "acme-corp", type: "Organization" },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const { saveGithubInstallation } = await import("@ironbastion/db");
+      await saveGithubInstallation(db, acme, {
+        githubInstallationId: "inst_acme_999",
+        accountLogin: "acme-corp",
+        accountType: "Organization",
+      });
+
+      const acmeStatus = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/status",
+        headers: auth(acme),
+      });
+      expect(acmeStatus.statusCode).toBe(200);
+      expect(acmeStatus.json().connected).toBe(true);
+      expect(acmeStatus.json().installation.accountLogin).toBe("acme-corp");
+
+      // Verify tenant isolation (Globex should not see Acme installation)
+      const globexStatus = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/status",
+        headers: auth(globex),
+      });
+      expect(globexStatus.statusCode).toBe(200);
+      expect(globexStatus.json().connected).toBe(false);
+      expect(globexStatus.json().installation).toBeNull();
+    } finally {
+      global.fetch = origFetch;
+      if (origId !== undefined) process.env["GITHUB_APP_ID"] = origId; else delete process.env["GITHUB_APP_ID"];
+      if (origKey !== undefined) process.env["GITHUB_APP_PRIVATE_KEY"] = origKey; else delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    }
+  });
+
+  it("returns connection error for invalid github RSA key when installation exists", async () => {
+    const origId = process.env["GITHUB_APP_ID"];
+    const origKey = process.env["GITHUB_APP_PRIVATE_KEY"];
+
+    process.env["GITHUB_APP_ID"] = "12345";
+    process.env["GITHUB_APP_PRIVATE_KEY"] = "INVALID_KEY_PEM_DATA";
+
+    try {
+      const { saveGithubInstallation } = await import("@ironbastion/db");
+      await saveGithubInstallation(db, acme, {
+        githubInstallationId: "inst_invalid_key",
+        accountLogin: "invalid-key-org",
+        accountType: "Organization",
+      });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/v1/integrations/github/status",
+        headers: auth(acme),
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.connected).toBe(false);
+      expect(body.error).toContain("Connection Error:");
+      expect(body.installation).not.toBeNull();
+      expect(body.installation.accountLogin).toBe("invalid-key-org");
+    } finally {
+      if (origId !== undefined) process.env["GITHUB_APP_ID"] = origId; else delete process.env["GITHUB_APP_ID"];
+      if (origKey !== undefined) process.env["GITHUB_APP_PRIVATE_KEY"] = origKey; else delete process.env["GITHUB_APP_PRIVATE_KEY"];
+    }
   });
 
   it("allows tenant to disconnect github installation", async () => {

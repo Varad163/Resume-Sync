@@ -557,6 +557,10 @@ export async function saveGithubInstallation(
     targetType?: string;
   },
 ): Promise<GithubInstallation> {
+  await db.query("INSERT INTO tenants (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [
+    tenantId,
+    tenantId,
+  ]);
   const existing = await getGithubInstallation(db, tenantId);
   const id = existing?.id ?? newId("ghi");
   const accountType = data.accountType ?? "User";
