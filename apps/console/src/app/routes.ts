@@ -1,7 +1,7 @@
 import type { NavView } from "../components/Sidebar.js";
 
 export type RouteDef =
-  | { name: NavView }
+  | { name: Exclude<NavView, "docs"> }
   | { name: "scan"; id: string; initialTab?: "certify" | "cbom" }
   | { name: "docs/github" }
   | { name: "docs"; path: string };

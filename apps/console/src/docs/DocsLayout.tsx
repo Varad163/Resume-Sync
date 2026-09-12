@@ -65,7 +65,7 @@ export function DocsLayout({
                 <div className="docs-section-heading">{section.title}</div>
                 <div className="docs-section-links">
                   {section.items.map((item) => {
-                    const isActive = currentPath.replace(/\/$/, "") === item.path.replace(/\/$/, "");
+                    const isActive = currentPage?.path === item.path;
                     return (
                       <button
                         key={item.id}

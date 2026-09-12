@@ -149,8 +149,10 @@ export default function App() {
     <AppLayout
       currentView={route.name}
       onNavigate={(target) => {
-        if (target === "docs/github") {
-          navigate({ name: "docs/github" });
+        if (target === "docs") {
+          navigate({ name: "docs", path: "/docs" });
+        } else if (target === "docs/github") {
+          navigate({ name: "docs", path: "/docs/integrations/github-app" });
         } else if (target === "settings") {
           navigate({ name: "settings" });
         } else if (target === "scans") {
@@ -158,7 +160,7 @@ export default function App() {
         } else if (target === "overview") {
           navigate({ name: "overview" });
         } else {
-          navigate({ name: target as NavView });
+          navigate({ name: target as Exclude<NavView, "docs"> });
         }
       }}
       onLogout={handleLogout}
@@ -175,9 +177,9 @@ export default function App() {
           onOpenAddRepo={() => setIsAddRepoOpen(true)}
           onNavigateView={(nav) => {
             if (nav === "docs/github") {
-              navigate({ name: "docs/github" });
+              navigate({ name: "docs", path: "/docs/integrations/github-app" });
             } else {
-              navigate({ name: nav as NavView });
+              navigate({ name: nav as Exclude<NavView, "docs"> });
             }
           }}
         />

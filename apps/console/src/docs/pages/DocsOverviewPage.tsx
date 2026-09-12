@@ -6,97 +6,121 @@ export function DocsOverviewPage({ onNavigate }: DocsOverviewPageProps) {
   return (
     <div className="docs-page-content">
       <section className="docs-section">
-        <h2>What is IronBastion?</h2>
+        <h2>Overview &amp; Mission</h2>
         <p>
-          <b>IronBastion</b> is an enterprise-grade Zero-Knowledge Cryptographic Posture &amp; Post-Quantum Cryptography (PQC) Migration Platform.
-          It discovers cryptographic primitives across software repositories, analyzes asset sensitivity, calculates quantum vulnerability risks, exports standard Cryptographic Bills of Materials (CBOM CycloneDX 1.6), and generates actionable remediation roadmaps.
+          <b>IronBastion</b> is an enterprise-grade Post-Quantum Cryptographic (PQC) Security Posture and Cryptographic Bill of Materials (CBOM) Management Platform.
+          It discovers cryptographic assets across multi-language repositories, assesses quantum vulnerability risks using deterministic scoring and specialized AI agents, exports standardized CycloneDX 1.6 CBOM artifacts, and builds actionable post-quantum migration roadmaps.
         </p>
         <p>
-          With quantum computing advancements posing an existential threat to classical public-key cryptography (such as RSA and ECDSA), IronBastion equips security teams and engineers to transition systematically toward NIST-standard PQC algorithms like <b>ML-KEM-768</b> and <b>ML-DSA-65</b>.
+          As quantum computing capabilities advance, classical public-key cryptography—including RSA, ECDSA, and ECDH—faces existential threats from Shor's algorithm. IronBastion provides security engineers and enterprise leaders with end-to-end visibility and verifiable cryptographic attestation to transition smoothly to NIST PQC standards (such as ML-KEM-768 and ML-DSA-65).
         </p>
       </section>
 
-      {/* High Level Flow Diagram */}
+      {/* Flow Diagram */}
       <section className="docs-section">
-        <h2>High-Level Security Lifecycle</h2>
-        <p>IronBastion automates the complete lifecycle from code discovery to continuous monitoring:</p>
+        <h2>High-Level Platform Flow</h2>
+        <p>Click any stage in the flow below to jump directly to its documentation page:</p>
         
-        <div className="docs-flow-diagram">
-          <div className="flow-step" onClick={() => onNavigate("/docs/scanning/repositories")}>
-            <div className="step-num">1</div>
-            <div className="step-title">Repository</div>
-            <div className="step-sub">GitHub / Git / ZIP / CLI</div>
+        <div className="docs-flow-diagram" style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", justifyContent: "center", margin: "20px 0" }}>
+          <div className="flow-step" onClick={() => onNavigate("/docs/using/repositories")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 1</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Repository</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>GitHub / ZIP / CLI</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/how-it-works")}>
-            <div className="step-num">2</div>
-            <div className="step-title">Crypto Discovery</div>
-            <div className="step-sub">Source &amp; Package Collectors</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/scanning/lifecycle")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 2</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Discovery</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>Target Checkout</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/analysis/inventory")}>
-            <div className="step-num">3</div>
-            <div className="step-title">Inventory</div>
-            <div className="step-sub">CBOM Primitives</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/scanning/source-code")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 3</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Crypto Detection</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>Collectors &amp; AST</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/analysis/findings")}>
-            <div className="step-num">4</div>
-            <div className="step-title">Security Analysis</div>
-            <div className="step-sub">Sentinel &amp; Oracle Verification</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/scanning/ai-analysis")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 4</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>AI Analysis</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>SENTINEL &amp; ORACLE</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/analysis/risk-scoring")}>
-            <div className="step-num">5</div>
-            <div className="step-title">Risk Scoring</div>
-            <div className="step-sub">Quantum Vulnerability Score</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/scanning/risk-scoring")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 5</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Risk Scoring</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>Deterministic Formula</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/outputs/cbom")}>
-            <div className="step-num">6</div>
-            <div className="step-title">CBOM</div>
-            <div className="step-sub">CycloneDX 1.6 Export</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/using/cbom")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 6</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>CBOM</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>CycloneDX 1.6 Export</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/outputs/migration-plan")}>
-            <div className="step-num">7</div>
-            <div className="step-title">Migration Plan</div>
-            <div className="step-sub">PQC Roadmap &amp; Waves</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/using/migration-plan")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 7</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Migration Plan</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>MIGRATE Agent Waves</div>
           </div>
-          <div className="flow-arrow">→</div>
+          <div className="flow-arrow" style={{ color: "var(--dim)" }}>↓</div>
 
-          <div className="flow-step" onClick={() => onNavigate("/docs/monitoring/watchtower")}>
-            <div className="step-num">8</div>
-            <div className="step-title">Monitoring</div>
-            <div className="step-sub">Watchtower Commit Poller</div>
+          <div className="flow-step" onClick={() => onNavigate("/docs/using/certify")} style={{ cursor: "pointer", padding: "12px 16px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)", textAlign: "center", minWidth: "120px" }}>
+            <div className="step-num" style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: 700 }}>STAGE 8</div>
+            <div className="step-title" style={{ fontSize: "14px", fontWeight: 600 }}>Certify &amp; Monitor</div>
+            <div className="step-sub" style={{ fontSize: "11px", color: "var(--dim)" }}>CERTIFY &amp; WATCHTOWER</div>
           </div>
         </div>
       </section>
 
+      {/* Feature Cards Grid */}
       <section className="docs-section">
-        <h2>Core Platform Pillars</h2>
-        <div className="docs-cards-grid">
-          <div className="docs-card" onClick={() => onNavigate("/docs/analysis/inventory")}>
-            <h3>🔍 Complete Visibility</h3>
-            <p>Automatically discover classical, weak, and quantum-vulnerable cryptographic algorithms across multi-language projects.</p>
+        <h2>Explore Documentation Topics</h2>
+        <div className="docs-cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px", marginTop: "16px" }}>
+          <div className="docs-card" onClick={() => onNavigate("/docs/quick-start")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🚀 Get Started</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Connect a repository and execute your first automated post-quantum scan in minutes.</p>
           </div>
-          <div className="docs-card" onClick={() => onNavigate("/docs/outputs/migration-plan")}>
-            <h3>⚡ Realistic Effort Sizing</h3>
-            <p>Generate PQC migration roadmaps sized for modern AI-assisted software development (~0.5d to 6d per remediation item).</p>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/using/findings")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🔍 Understand Results</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Analyze security findings, discovered crypto assets, risk scores, and provenances.</p>
           </div>
-          <div className="docs-card" onClick={() => onNavigate("/docs/monitoring/watchtower")}>
-            <h3>🛡️ Watchtower Monitoring</h3>
-            <p>Continuously check remote Git repositories for newly introduced cryptographic weaknesses before production deployment.</p>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/using/migration-plan")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>📅 Plan Migration</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Explore prioritized PQC remediation waves, effort sizing, and replacement algorithms.</p>
           </div>
-          <div className="docs-card" onClick={() => onNavigate("/docs/outputs/certify")}>
-            <h3>📜 Signed Attestation</h3>
-            <p>Produce digitally signed CERTIFY audit certificates containing CBOM cryptographic hashes for compliance verification.</p>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/using/watchtower")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🛡️ Continuous Monitoring</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Track repository commit changes with Watchtower to detect introduced vulnerabilities.</p>
+          </div>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/using/certify")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>📜 Certify Posture</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Generate cryptographically signed compliance attestations backed by AWS KMS.</p>
+          </div>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/integrations/github-app")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🔗 Integrate GitHub</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Configure read-only GitHub App access with short-lived installation access tokens.</p>
+          </div>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/architecture/system")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🏗️ Architecture</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Deep dive into monorepo structure, worker queues, agents, and database engine.</p>
+          </div>
+
+          <div className="docs-card" onClick={() => onNavigate("/docs/security/multi-tenancy")} style={{ cursor: "pointer", padding: "20px", background: "var(--bg-card)", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: "16px", color: "var(--text-main)", marginBottom: "8px" }}>🔒 Security &amp; Access</h3>
+            <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>Review PostgreSQL Row Level Security (RLS), Cognito OAuth PKCE, and ephemeral checkouts.</p>
           </div>
         </div>
       </section>
