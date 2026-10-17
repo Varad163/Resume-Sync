@@ -1,0 +1,122 @@
+\documentclass[10pt,a4paper]{article}
+
+% Core Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage[top=0.45in, bottom=0.45in, left=0.55in, right=0.55in]{geometry}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% Color Scheme
+\definecolor{primarycolor}{RGB}{20, 35, 60}
+\definecolor{linkcolor}{RGB}{0, 90, 180}
+
+% Hyperref Setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=linkcolor,
+    urlcolor=linkcolor,
+    pdftitle={Varadaraj Gholap - Resume},
+    pdfauthor={Varadaraj Gholap}
+}
+
+% Global List Customization (Prevents raw brackets printing)
+\setlist[itemize]{leftmargin=1.15em, label=--, itemsep=1.5pt, parsep=0pt, topsep=1.5pt, partopsep=0pt}
+
+% Custom Section Formatting
+\newcommand{\cvsection}[1]{%
+  \vspace{5pt}%
+  {\large\bfseries\color{primarycolor} #1}%
+  \vspace{1.5pt}\hrule\vspace{3.5pt}%
+}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+% ==================== HEADER ====================
+\begin{center}
+    {\fontsize{22pt}{24pt}\selectfont \textbf{\color{primarycolor} Varadaraj Gholap}}\\[3pt]
+    {\normalsize \textbf{Full Stack Developer \;\textbar\; React.js \;\textbar\; Next.js \;\textbar\; TypeScript \;\textbar\; Node.js}}\\[3pt]
+    {\small Pune, Maharashtra \;\textbar\; +91 8421882858 \;\textbar\; \href{mailto:varadgholap163@gmail.com}{varadgholap163@gmail.com}}\\[2pt]
+    {\small \href{https://github.com/Varad163}{GitHub} \;\textbar\; \href{https://www.linkedin.com/in/varadraj-gholap-04a42228/}{LinkedIn} \;\textbar\; \href{https://leetcode.com/u/Varad163/}{LeetCode}}
+\end{center}
+
+\vspace{-4pt}
+
+% ==================== EDUCATION ====================
+\cvsection{Education}
+
+\textbf{P.E.S. Modern College of Engineering} \hfill Pune, Maharashtra\\
+\textnormal{\textit{B.E. Artificial Intelligence \& Machine Learning} \;\textbar\; CGPA: 7.5} \hfill 2023 -- 2027
+
+% ==================== TECHNICAL SKILLS ====================
+\cvsection{Technical Skills}
+
+\begin{small}
+\textbf{Frontend:} React.js, Next.js, TypeScript, JavaScript, Tailwind CSS, ShadCN UI, Zustand\\[2.5pt]
+\textbf{Backend:} Node.js, Express.js, REST APIs, JWT Authentication, NextAuth.js\\[2.5pt]
+\textbf{Databases:} PostgreSQL, MongoDB, Firebase Firestore, Prisma ORM\\[2.5pt]
+\textbf{Tools:} Git, GitHub, Docker, Postman, Vercel, Cursor, Antigravity\\[2.5pt]
+\textbf{AI:} RAG, MCP, Generative AI (GenAI)\\[2.5pt]
+\textbf{Core:} DSA, OOP, SQL, Authentication
+\end{small}
+
+% ==================== EXPERIENCE ====================
+\cvsection{Experience}
+
+\textbf{Full Stack Developer} --- Runta Venture \hfill Pune, Maharashtra\\
+\textnormal{\textit{Project: \href{http://13.232.3.52/}{\textbf{IronBastion}}}} \hfill 2024 -- Present
+\begin{itemize}
+    \item Engineered and developed full-stack web platform features for Runta Venture, building responsive user interfaces, backend REST APIs, and integration services for the IronBastion platform.
+    \item Implemented authentication flows, scalable API endpoints, and automated deployment pipelines using Git and GitHub workflows.
+    \item Created and improved comprehensive technical documentation covering GitHub App connectivity, platform architecture, scan lifecycles, and security controls.
+\end{itemize}
+
+% ==================== PROJECTS ====================
+\cvsection{Projects}
+
+\textbf{ReachOut} --- \textnormal{\textit{AI-Powered Outreach SaaS}} \;\textbar\; \textit{Next.js, TypeScript, Prisma, PostgreSQL} \hfill \href{https://github.com/Varad163/ReachOut}{GitHub} \;\textbar\; \href{https://varad163-reachoutai.vercel.app/}{Live}
+\begin{itemize}
+    \item Built a full-stack SaaS platform automating personalized recruiter outreach and job application tracking workflows.
+    \item Designed PostgreSQL database architecture using Prisma ORM and implemented secure authentication and recruiter management systems.
+    \item Implemented email automation and candidate application tracking to streamline high-volume recruitment workflows.
+\end{itemize}
+
+\vspace{4pt}
+
+\textbf{AI Prompt Fusion} --- \textnormal{\textit{Multi-Model AI Platform}} \;\textbar\; \textit{Next.js, React.js, TypeScript, Firebase, Clerk, ShadCN UI} \hfill \href{https://github.com/Varad163/Ai-PromptFusion}{GitHub} \;\textbar\; \href{https://ai-prompt-fusion.vercel.app/}{Live}
+\begin{itemize}
+    \item Developed a multi-model Generative AI chat platform enabling dynamic model selection and side-by-side response comparison.
+    \item Integrated Clerk authentication and Firebase Firestore for secure user identity management and persistent multi-session chat history.
+    \item Built a responsive UI using ShadCN UI and optimized API integration pipelines to deliver real-time LLM interactions.
+\end{itemize}
+
+\vspace{4pt}
+
+\textbf{GeoAlert} --- \textnormal{\textit{Real-Time Disaster Alert Platform}} \;\textbar\; \textit{Next.js, TypeScript, Leaflet.js, Prisma, Socket.IO} \hfill \href{https://github.com/Varad163/GeoAlert}{GitHub}
+\begin{itemize}
+    \item Developed a full-stack real-time disaster alert platform providing emergency notifications and location-based safety alerts.
+    \item Implemented interactive geospatial visualization using Leaflet.js to map safe zones, threat perimeters, and affected regions.
+    \item Built REST APIs and database models with Prisma ORM, integrating Socket.IO WebSockets for live monitoring and real-time updates.
+\end{itemize}
+
+% ==================== CERTIFICATION ====================
+\cvsection{Certification}
+
+\textbf{100xDevs --- Cohort 3} \;\textbar\; Full Stack Development \& DevOps \hfill \href{https://generateinvoice.teachx.in/generatecertificate/certificate/harkirat_db/75222/40409/12}{Certificate}
+
+% ==================== ACHIEVEMENTS ====================
+\cvsection{Achievements}
+
+\begin{itemize}[label=$\bullet$]
+    \item Solved 240+ Data Structures \& Algorithms problems on LeetCode.
+    \item Developed and deployed 8+ full-stack applications using React.js, Next.js, and modern web technologies.
+\end{itemize}
+
+\end{document}
